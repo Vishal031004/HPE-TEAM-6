@@ -1,0 +1,10 @@
+groq
+python-dotenv
+pdfplumber
+PyPDF2
+requests
+pymongo
+numpy
+fastapi
+uvicorn
+python-multipart

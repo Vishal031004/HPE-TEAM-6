@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Hardware Components Assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:        #0d0f14;
+    --surface:   #141820;
+    --surface2:  #1c2230;
+    --border:    #2a3348;
+    --accent:    #00e5b0;
+    --accent2:   #0099ff;
+    --warn:      #ffb800;
+    --danger:    #ff4d6a;
+    --text:      #e2e8f0;
+    --muted:     #6b7a99;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+    --radius:    8px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* --- CUSTOM DARK SCROLLBAR --- */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  * { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
+
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 14px;
+    line-height: 1.6; height: 100vh; display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Header - Moved to Top Left */
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 16px 24px; display: flex; align-items: center; justify-content: flex-start;
+    flex-shrink: 0;
+  }
+  .header-content {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .logo-icon {
+    width: 32px; height: 32px; border-radius: 6px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+  }
+  h1 { font-family: var(--mono); font-size: 16px; color: var(--accent); letter-spacing: 0.02em; }
+
+  /* Chat Area - Fixed Proportions */
+  .chat-container {
+    flex: 1; overflow-y: auto; padding: 32px 16px; display: flex; flex-direction: column; gap: 24px;
+    max-width: 850px; 
+    margin: 0 auto; width: 100%;
+  }
+
+  /* Message Bubbles */
+  .msg-row { display: flex; width: 100%; }
+  .msg-row.user { justify-content: flex-end; }
+  
+  .bubble {
+    padding: 20px 24px; border-radius: var(--radius);
+    position: relative;
+  }
+  
+  .msg-row.system .bubble { 
+    background: var(--surface); border: 1px solid var(--border); 
+    border-top-left-radius: 0; width: 100%; 
+  }
+  .msg-row.user .bubble { 
+    background: var(--surface2); border: 1px solid var(--accent2); 
+    border-top-right-radius: 0; max-width: 80%; 
+  }
+
+  .bubble-header {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.1em;
+  }
+  .msg-row.user .bubble-header { color: var(--accent2); }
+  .msg-row.system .bubble-header { color: var(--accent); }
+
+  /* Drag & Drop Zone */
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 40px; text-align: center; cursor: pointer; transition: 0.3s;
+    background: var(--bg); margin-top: 16px;
+  }
+  .drop-zone.dragover { border-color: var(--accent); background: rgba(0,229,176,0.05); }
+  .drop-zone p { font-family: var(--mono); color: var(--muted); margin-top: 12px; font-size: 13px;}
+  .drop-zone:hover p { color: var(--accent); }
+
+  /* Sliders UI - Perfect Grid Alignment */
+  .weight-panel { 
+    margin-top: 16px; background: var(--bg); 
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 24px; 
+  }
+  .weight-row {
+    display: grid;
+    grid-template-columns: 2.5fr 1.5fr 100px 40px; 
+    align-items: center; gap: 16px;
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+  }
+  .weight-row:last-child { border-bottom: none; }
+  .spec-name { font-family: var(--mono); font-size: 13px; color: var(--text); }
+  .spec-val { font-size: 13px; color: var(--accent2); font-family: var(--mono);}
+  input[type=range] { accent-color: var(--accent); width: 100%; cursor: pointer; margin: 0;}
+  .weight-val { font-family: var(--mono); text-align: right; color: var(--warn); font-size: 13px;}
+
+  /* Result Cards */
+  .part-card {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-top: 16px;
+  }
+  .part-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;}
+  .mpn { font-family: var(--mono); font-size: 16px; font-weight: 600; color: var(--accent); }
+  .score-badge { background: rgba(0,229,176,0.1); color: var(--accent); padding: 4px 10px; border-radius: 4px; font-family: var(--mono); font-weight: 600;}
+  
+  .spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  .spec-item { background: var(--surface2); padding: 8px 12px; border-radius: 4px; font-size: 12px; font-family: var(--mono); border: 1px solid var(--border);}
+  .spec-label { color: var(--muted); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: var(--accent); color: #000; font-family: var(--mono);
+    font-size: 13px; font-weight: 600; border: none; border-radius: 4px;
+    padding: 10px 20px; cursor: pointer; transition: 0.2s; text-decoration: none;
+  }
+  .btn:hover { opacity: 0.88; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover:not(:disabled) { border-color: var(--accent2); color: var(--accent2); }
+  .btn-digikey { background: #CC0000; color: white; } 
+  .btn-digikey:hover { background: #FF0000; }
+  
+  .card-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* Loading indicator */
+  .typing { display: flex; gap: 4px; align-items: center; height: 24px; }
+  .dot { width: 6px; height: 6px; background: var(--muted); border-radius: 50%; animation: blink 1.4s infinite both; }
+  .dot:nth-child(1) { animation-delay: 0s; }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+
+</style>
+</head>
+<body>
+
+  <header>
+    <div class="header-content">
+      <div class="logo-icon">⚡</div>
+      <h1>HARDWARE COMPONENTS ASSISTANT</h1>
+    </div>
+  </header>
+
+  <div class="chat-container" id="chat">
+    <div class="msg-row system">
+      <div class="bubble">
+        <div class="bubble-header">System</div>
+        <p>Initialization complete. Ready to analyze new components.</p>
+        
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+          <input type="file" id="file-input" accept="application/pdf" style="display:none" onchange="handleFileSelect(event)">
+          <div style="font-size: 32px; margin-bottom: 8px;">📥</div>
+          <p>Drag & drop a datasheet PDF here, or click to browse.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const chat = document.getElementById('chat');
+const dropZone = document.getElementById('drop-zone');
+
+let extractedSpecs = {};
+let detectedType = "";
+
+// Helper to unpack nested JSON objects to prevent "[object Object]"
+function unpackValue(val) {
+  if (val === null || val === undefined) return "Not Found";
+  if (typeof val === 'object') {
+    return val.value || val.Value || val.text || JSON.stringify(val);
+  }
+  return String(val);
+}
+
+// Drag & Drop
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) processFile(e.dataTransfer.files[0]);
+});
+
+function handleFileSelect(e) {
+  if (e.target.files.length > 0) processFile(e.target.files[0]);
+}
+
+function appendMessage(sender, content, id="") {
+  const row = document.createElement('div');
+  row.className = `msg-row ${sender}`;
+  if(id) row.id = id;
+  
+  const header = sender === 'system' ? 'System' : 'Engineer';
+  row.innerHTML = `<div class="bubble"><div class="bubble-header">${header}</div><div class="bubble-content">${content}</div></div>`;
+  chat.appendChild(row);
+  chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
+  return row;
+}
+
+function showTyping() {
+  return appendMessage('system', `<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`, 'typing-indicator');
+}
+
+function removeTyping() {
+  const indicator = document.getElementById('typing-indicator');
+  if (indicator) indicator.remove();
+}
+
+async function processFile(file) {
+  dropZone.style.display = 'none';
+  appendMessage('user', `📄 Uploaded: <strong>${file.name}</strong>`);
+  showTyping();
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const response = await fetch("/api/upload", { method: "POST", body: formData });
+    const data = await response.json();
+    removeTyping();
+
+    if (data.error) {
+      appendMessage('system', `<span style="color:var(--danger)">Error: ${data.error}</span>`);
+      dropZone.style.display = 'block'; 
+      return;
+    }
+
+    extractedSpecs = data.specs;
+    detectedType = data.detected_type;
+    promptForWeights();
+
+  } catch (err) {
+    removeTyping();
+    appendMessage('system', `<span style="color:var(--danger)">Server connection failed. Make sure backend is running.</span>`);
+    dropZone.style.display = 'block';
+  }
+}
+
+function promptForWeights() {
+  let sliderHTML = `<p>Detected Component: <strong style="color:var(--accent)">${detectedType}</strong></p>`;
+  sliderHTML += `<p style="font-size:13px; color:var(--muted); margin-top:8px;">I have extracted the following parameters from the PDF. Assign importance weights (0-100) before I run the market analysis.</p>`;
+  
+  sliderHTML += `<div class="weight-panel">`;
+  for (const [feature, rawValue] of Object.entries(extractedSpecs)) {
+    // Unpack [object Object] into clean strings
+    const displayVal = unpackValue(rawValue);
+    
+    if (displayVal === "Not Found" || displayVal === "null") continue;
+    
+    const cleanId = feature.replace(/\W+/g, '');
+    sliderHTML += `
+      <div class="weight-row">
+        <div class="spec-name">${feature}</div>
+        <div class="spec-val">${displayVal}</div>
+        <input type="range" min="0" max="100" value="10" id="w-${cleanId}" oninput="document.getElementById('v-${cleanId}').innerText = this.value">
+        <div class="weight-val" id="v-${cleanId}">10</div>
+      </div>
+    `;
+  }
+  sliderHTML += `</div>`;
+  sliderHTML += `<button class="btn" style="margin-top:20px; width: 100%;" onclick="submitWeights(this)">▶ RUN MATH ENGINE</button>`;
+
+  appendMessage('system', sliderHTML);
+}
+
+async function submitWeights(btnElement) {
+  btnElement.disabled = true;
+  btnElement.innerText = "Processing...";
+
+  let customWeights = {};
+  for (const feature of Object.keys(extractedSpecs)) {
+    const cleanId = feature.replace(/\W+/g, '');
+    const slider = document.getElementById(`w-${cleanId}`);
+    if (slider) customWeights[feature] = parseInt(slider.value);
+  }
+
+  appendMessage('user', `Executing market search with custom scoring weights...`);
+  showTyping();
+
+  try {
+    const response = await fetch("/api/rank", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        detected_type: detectedType,
+        extracted_specs: extractedSpecs,
+        weights: customWeights
+      })
+    });
+    
+    const data = await response.json();
+    removeTyping();
+    renderFinalResults(data.results);
+    
+  } catch (err) {
+    removeTyping();
+    appendMessage('system', `<span style="color:var(--danger)">Ranking failed: ${err}</span>`);
+    btnElement.disabled = false;
+    btnElement.innerText = "▶ RUN MATH ENGINE";
+  }
+}
+
+function renderFinalResults(results) {
+  let resHTML = `<p>Analysis complete. Here are the top ${results.length} mathematical matches from the live market:</p>`;
+  
+  results.forEach((match, index) => {
+    let specHTML = "";
+    for (const [k, v] of Object.entries(match.specs)) {
+      const displayV = unpackValue(v);
+      specHTML += `<div class="spec-item"><span class="spec-label">${k}:</span> ${displayV}</div>`;
+    }
+    
+    // Product Page link
+    const dkLink = `https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(match.part_number)}`;
+    
+    // Safely look for Primary Datasheet URL from backend extraction
+    let rawDsLink = match.datasheet_url || (match.specs && (match.specs.PrimaryDatasheet || match.specs.DatasheetUrl));
+    
+    let dsButtonHTML;
+    if (rawDsLink && rawDsLink.startsWith("http")) {
+        dsButtonHTML = `<a href="${rawDsLink}" target="_blank" class="btn btn-outline">📄 DATASHEET</a>`;
+    } else {
+        // Fallback: Lead them directly to the product page where the datasheet lives
+        dsButtonHTML = `<a href="${dkLink}" target="_blank" class="btn btn-outline" title="View product page to download datasheet">📄 FIND DATASHEET</a>`;
+    }
+
+    resHTML += `
+      <div class="part-card">
+        <div class="part-card-header">
+          <div class="mpn">#${index + 1} - ${match.part_number}</div>
+          <div class="score-badge">${match.score}% MATCH</div>
+        </div>
+        <div class="spec-grid">
+          ${specHTML}
+        </div>
+        <div class="card-actions">
+          ${dsButtonHTML}
+          <a href="${dkLink}" target="_blank" class="btn btn-digikey">🛒 BUY ON DIGIKEY</a>
+        </div>
+      </div>
+    `;
+  });
+
+  resHTML += `
+    <div style="margin-top: 24px; text-align: center;">
+      <button class="btn btn-outline" onclick="resetChat()">↻ START NEW SEARCH</button>
+    </div>
+  `;
+
+  appendMessage('system', resHTML);
+}
+
+function resetChat() {
+  location.reload(); 
+}
+</script>
+</body>
+</html>
