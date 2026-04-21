@@ -1,16 +1,9 @@
-# ⚡ Enterprise Hardware Components Assistant
+# Enterprise Hardware Components Assistant
 
 An intelligent, hybrid Retrieval-Augmented Generation (RAG) pipeline that automates the engineering task of finding alternative electronic components. It reads raw PDF datasheets, dynamically discovers industry-standard specifications via the DigiKey API, extracts data with strict anti-hallucination guardrails, and mathematically ranks the best market alternatives.
 
 ---
 
-## The Problem It Solves
-
-Hardware engineers spend hours manually reading 40-page datasheets to find alternative parts when a component goes out of stock. Standard AI systems fail because they hallucinate values or cannot interpret complex table layouts.
-
-This system solves that by treating the LLM strictly as a **semantic parser**, controlled by deterministic software logic, validation rules, and unit-aware mathematical engines.
-
----
 
 ## Key Features
 
