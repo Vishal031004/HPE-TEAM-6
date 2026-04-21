@@ -4,15 +4,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from core.pdf_processor import detect_component_type, score_and_chunk_pdf
+from core.pdf_processor import detect_component_type, parse_pdf_to_structured_pages
 from core.database import get_or_build_component_data
 from core.extractor import parse_datasheet_chunks
 from core.similarity import rank_components
 
 def get_user_weights(user_specs):
-    """
-    Prompts the user in the terminal to assign weights to each extracted feature.
-    """
+    """Prompts the user in the terminal to assign weights to each extracted feature."""
     print("\n" + "="*50)
     print("⚖️  ASSIGN FEATURE WEIGHTS")
     print("="*50)
@@ -58,48 +56,49 @@ def main():
 
     pdf_path = os.path.join(datasheet_dir, pdf_files[0])
     
-    # Supported broad categories
     supported_types = [
         "Audio Codec", "LDO Regulator", "Buck Converter", "Op-Amp", 
         "Microcontroller", "Resistor", "Capacitor", "MOSFET"
     ]
 
     print("\n" + "="*50)
-    print("🚀 PIPELINE STARTING")
+    print("🚀 ENTERPRISE PIPELINE STARTING")
     print("="*50)
 
-    # --- STAGE 1: Detect Component ---
+    # Stage 1: Detect Component
     detected_type = detect_component_type(pdf_path, supported_types)
     if detected_type == "Unknown":
         return
 
-    # --- STAGE 2: Auto-Populating Cache (Query API, Get 20, Extract Schema) ---
+    # Stage 2: Auto-Populating Cache (Query API, Get 20, Extract Schema)
     target_specs, market_competitors = get_or_build_component_data(detected_type)
     if not target_specs or not market_competitors:
         return
 
-    # --- STAGE 3: Extract Values from User PDF ---
-    batched_chunks = score_and_chunk_pdf(pdf_path, target_specs, max_pages=8)
-    if not batched_chunks:
-        print("⚠️ No relevant data found in PDF.")
+    # Stage 3: Parse PDF into Structured Memory
+    structured_pages = parse_pdf_to_structured_pages(pdf_path)
+    if not structured_pages:
+        print("⚠️ No readable text/tables found in PDF.")
         return
 
+    # Stage 4: Surgical RAG Extraction (Injecting market competitors!)
     user_extracted_specs = parse_datasheet_chunks(
-        filtered_chunks=batched_chunks, 
+        structured_pages=structured_pages, 
         required_features=target_specs,
+        market_competitors=market_competitors,
         component_name=os.path.basename(pdf_path)
     )
     
-    print("\n📄 YOUR DATASHEET SPECS (Extracted by Groq):")
+    print("\n📄 YOUR DATASHEET SPECS (Extracted via Hybrid RAG):")
     print(json.dumps(user_extracted_specs, indent=2))
 
-    # --- STAGE 4: Display & Ask for Weights ---
+    # Stage 5: Display & Ask for Weights
     custom_weights = get_user_weights(user_extracted_specs)
 
-    # --- STAGE 5: Compute Similarity & Top 5 ---
+    # Stage 6: Compute Similarity Engine & Top 5
     top_5_matches = rank_components(user_extracted_specs, market_competitors, feature_weights=custom_weights)
 
-    # --- STAGE 6: Display and Cache Final Results ---
+    # Stage 7: Display and Cache Final Results
     print("\n" + "="*50)
     print(f"🏆 TOP 5 RECOMMENDED ALTERNATIVES FOR {detected_type.upper()}")
     print("="*50)
@@ -111,7 +110,6 @@ def main():
         for k, v in preview_specs:
             print(f"   • {k}: {v}")
 
-    # Cache the final report to a JSON file
     report_data = {
         "original_pdf": os.path.basename(pdf_path),
         "component_type": detected_type,

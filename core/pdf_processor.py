@@ -1,17 +1,19 @@
 import os
+import re
 import json
 import pdfplumber
 import PyPDF2
-from groq import Groq
+from typing import List, Dict, Any
+from openai import OpenAI
 
-# Initialize Groq client
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+# Initialize OpenAI client (Unifying the stack!)
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-def detect_component_type(pdf_path, available_types):
+def detect_component_type(pdf_path: str, available_types: List[str]) -> str:
     """
-    Reads only Page 1 of the PDF and uses the LLM to classify the component.
+    Reads Page 1 of the PDF and uses OpenAI to classify the component type.
     """
-    print(f"\n🔍 Analyzing Page 1 to detect exact component type...")
+    print(f"\n🔍 [Stage 1] Analyzing Page 1 to detect component type...")
     try:
         with open(pdf_path, "rb") as f:
             reader = PyPDF2.PdfReader(f)
@@ -19,20 +21,20 @@ def detect_component_type(pdf_path, available_types):
             
         prompt = f"""
         You are a highly precise hardware engineering assistant. Read the following text from page 1 of a datasheet.
-        Your job is to classify this component into the MOST SPECIFIC category possible from the provided list.
+        Classify this component into the MOST SPECIFIC category possible from the provided list.
         
         Available Categories:
         {json.dumps(available_types)}
         
-        Datasheet Text:
+        Datasheet Text (Snippet):
         {page_1_text[:2000]}
         
-        You must output valid JSON with a single key 'detected_type' containing the exact matching string from the Available Categories list. 
+        Output valid JSON with a single key 'detected_type' containing the exact matching string from the Available Categories. 
         If nothing matches, output 'Unknown'.
         """
         
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You output strict JSON only."},
                 {"role": "user", "content": prompt}
@@ -52,93 +54,94 @@ def detect_component_type(pdf_path, available_types):
         return "Unknown"
 
 
-def score_and_chunk_pdf(filepath, target_features, max_pages=8):
+def parse_pdf_to_structured_pages(filepath: str) -> List[Dict[str, Any]]:
     """
-    Reads the PDF, scores each page and its tables based on the target features,
-    and returns only the most relevant chunks of text/tables for the LLM.
+    Converts a raw PDF into an intermediate JSON-like structure.
+    Extracts text and carefully formats 2D tables per page.
     """
-    print(f"\n📄 Scanning PDF and scoring pages based on {len(target_features)} target features...")
-    
-    # Clean the features for easy text matching (lowercase, remove extra spaces)
-    lower_features = [str(f).lower().strip() for f in target_features]
-    
-    scored_pages = []
+    print(f"\n📄 [Stage 2] Parsing raw PDF into structured memory...")
+    structured_pages = []
 
     try:
         with pdfplumber.open(filepath) as pdf:
             for page_num, page in enumerate(pdf.pages):
                 text = page.extract_text() or ""
-                tables = page.extract_tables()
+                raw_tables = page.extract_tables()
                 
-                score = 0
-                text_lower = text.lower()
-
-                # ---------------------------------------------------------
-                # 1. PAGE TEXT SCORING
-                # ---------------------------------------------------------
-                for feature in lower_features:
-                    if feature in text_lower:
-                        score += 20  
-                
-                if any(junk in text_lower for junk in ["revision history", "package outline", "tape and reel", "soldering footprint"]):
-                    score -= 100
-
-                # ---------------------------------------------------------
-                # 2. TABLE SCORING
-                # ---------------------------------------------------------
-                formatted_tables = ""
-                for table in tables:
-                    if not table: 
+                formatted_tables = []
+                for table in raw_tables:
+                    if not table:
                         continue
-                    
-                    # 🚨 THE FIX: Properly nested list comprehension to flatten the table
-                    table_str = " ".join([str(cell).lower() for row in table for cell in row if cell])
-                    
-                    if any(kw in table_str for kw in ["min", "max", "typ", "typical"]): 
-                        score += 30
-                    if any(unit in table_str for unit in ["mv", "ma", "khz", "mhz", "db", "µa", "ua"]): 
-                        score += 15
-
-                    for feature in lower_features:
-                        if feature in table_str:
-                            score += 50  
-                            
-                    if any(junk in table_str for junk in ["pin name", "register address", "bit description"]):
-                        score -= 40
-
-                    formatted_tables += f"\n[Table]\n"
+                    # Clean and format the table into a markdown-like grid for the LLM
+                    table_str = ""
                     for row in table:
-                        clean_row = [str(cell).strip().replace('\n', ' ') if cell else "" for cell in row]
-                        formatted_tables += " | ".join(clean_row) + "\n"
+                        clean_row = [str(cell).replace('\n', ' ').strip() if cell else "" for cell in row]
+                        table_str += " | ".join(clean_row) + "\n"
+                    formatted_tables.append(table_str)
 
-                # ---------------------------------------------------------
-                # 3. SAVE THE PAGE DATA
-                # ---------------------------------------------------------
-                scored_pages.append({
+                structured_pages.append({
                     "page_num": page_num + 1,
-                    "score": score,
                     "text": text,
                     "tables": formatted_tables
                 })
-
-        # Sort the pages by score (highest to lowest)
-        scored_pages.sort(key=lambda x: x["score"], reverse=True)
-        
-        # Keep only the pages with a positive score, up to our max_pages limit
-        best_pages = [p for p in scored_pages if p["score"] > 0][:max_pages]
-        
-        print(f"🎯 Filtered down to the {len(best_pages)} most relevant pages out of {len(pdf.pages)}.")
-        
-        # Format the final chunks to send to the LLM
-        final_chunks = []
-        for p in best_pages:
-            chunk = f"--- PAGE {p['page_num']} (Relevance Score: {p['score']}) ---\n"
-            chunk += f"TEXT:\n{p['text'][:1000]}...\n" # Cap text length slightly to save tokens
-            chunk += f"\nTABLES:\n{p['tables']}\n"
-            final_chunks.append(chunk)
-
-        return final_chunks
+                
+        print(f"✅ Successfully structured {len(structured_pages)} pages.")
+        return structured_pages
 
     except Exception as e:
-        print(f"❌ Error reading PDF: {e}")
+        print(f"❌ Error parsing PDF: {e}")
         return []
+
+
+def retrieve_feature_context(structured_pages: List[Dict[str, Any]], feature_name: str, top_k: int = 2) -> str:
+    """
+    RAG Retrieval Engine: Hunts through the structured pages for the specific feature.
+    Returns a highly concentrated prompt context containing only the relevant tables/text.
+    """
+    # 1. Clean the feature name to generate search keywords
+    # Converts "Voltage - Output (Min/Fixed)" -> ["voltage", "output", "min", "fixed"]
+    clean_string = re.sub(r'[^a-zA-Z0-9\s]', ' ', feature_name).lower()
+    keywords = [word for word in clean_string.split() if len(word) > 2]
+    
+    scored_pages = []
+
+    for page in structured_pages:
+        score = 0
+        page_text_lower = page["text"].lower()
+        
+        # Check text
+        for kw in keywords:
+            if kw in page_text_lower:
+                score += 1
+                
+        # Check tables (tables are much more valuable for spec extraction)
+        for table in page["tables"]:
+            table_lower = table.lower()
+            for kw in keywords:
+                if kw in table_lower:
+                    score += 3 # Weight tables heavily
+
+        if score > 0:
+            scored_pages.append({"score": score, "data": page})
+
+    # Sort pages by relevance
+    scored_pages.sort(key=lambda x: x["score"], reverse=True)
+    best_pages = [p["data"] for p in scored_pages[:top_k]]
+
+    # 2. Build the LLM Context String
+    if not best_pages:
+        return "" # If completely missing, return empty so LLM skips it
+        
+    context_blocks = []
+    for p in best_pages:
+        block = f"--- PAGE {p['page_num']} ---\n"
+        
+        if p["tables"]:
+            block += "TABLES ON THIS PAGE:\n"
+            for t in p["tables"]:
+                block += f"{t}\n"
+                
+        block += f"TEXT ON THIS PAGE:\n{p['text'][:1500]}...\n" # Cap text length to save tokens
+        context_blocks.append(block)
+
+    return "\n".join(context_blocks)
