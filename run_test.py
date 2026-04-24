@@ -58,7 +58,8 @@ def main():
     
     supported_types = [
         "Audio Codec", "LDO Regulator", "Buck Converter", "Op-Amp", 
-        "Microcontroller", "Resistor", "Capacitor", "MOSFET"
+        "Microcontroller", "Resistor", "Capacitor", "MOSFET",
+        "Gyroscope", "Accelerometer", "Pressure Sensor", "Temperature Sensor"
     ]
 
     print("\n" + "="*50)

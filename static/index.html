@@ -183,6 +183,7 @@ const dropZone = document.getElementById('drop-zone');
 
 let extractedSpecs = {};
 let detectedType = "";
+const TOTAL_WEIGHT_BUDGET = 100;
 
 // Helper to unpack nested JSON objects to prevent "[object Object]"
 function unpackValue(val) {
@@ -258,9 +259,16 @@ async function processFile(file) {
 
 function promptForWeights() {
   let sliderHTML = `<p>Detected Component: <strong style="color:var(--accent)">${detectedType}</strong></p>`;
-  sliderHTML += `<p style="font-size:13px; color:var(--muted); margin-top:8px;">I have extracted the following parameters from the PDF. Assign importance weights (0-100) before I run the market analysis.</p>`;
+  sliderHTML += `<p style="font-size:13px; color:var(--muted); margin-top:8px;">Assign importance weights from a shared 100% budget. If one feature gets 20%, only 80% remains for the rest.</p>`;
   
   sliderHTML += `<div class="weight-panel">`;
+  sliderHTML += `
+    <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-family:var(--mono); font-size:12px;">
+      <span>Allocated: <strong id="allocated-weight" style="color:var(--warn)">0%</strong></span>
+      <span>Remaining: <strong id="remaining-weight" style="color:var(--accent)">100%</strong></span>
+    </div>
+  `;
+
   for (const [feature, rawValue] of Object.entries(extractedSpecs)) {
     // Unpack [object Object] into clean strings
     const displayVal = unpackValue(rawValue);
@@ -272,8 +280,8 @@ function promptForWeights() {
       <div class="weight-row">
         <div class="spec-name">${feature}</div>
         <div class="spec-val">${displayVal}</div>
-        <input type="range" min="0" max="100" value="10" id="w-${cleanId}" oninput="document.getElementById('v-${cleanId}').innerText = this.value">
-        <div class="weight-val" id="v-${cleanId}">10</div>
+        <input type="range" min="0" max="100" value="0" id="w-${cleanId}" oninput="handleWeightChange(this)">
+        <div class="weight-val" id="v-${cleanId}">0%</div>
       </div>
     `;
   }
@@ -281,6 +289,44 @@ function promptForWeights() {
   sliderHTML += `<button class="btn" style="margin-top:20px; width: 100%;" onclick="submitWeights(this)">▶ RUN MATH ENGINE</button>`;
 
   appendMessage('system', sliderHTML);
+  refreshWeightBudgetUI();
+}
+
+function getWeightSliders() {
+  return Array.from(document.querySelectorAll('input[type="range"][id^="w-"]'));
+}
+
+function getAllocatedWeight() {
+  return getWeightSliders().reduce((sum, slider) => sum + parseInt(slider.value || '0', 10), 0);
+}
+
+function refreshWeightBudgetUI() {
+  const sliders = getWeightSliders();
+  const total = getAllocatedWeight();
+  const remaining = Math.max(0, TOTAL_WEIGHT_BUDGET - total);
+
+  const allocatedEl = document.getElementById('allocated-weight');
+  const remainingEl = document.getElementById('remaining-weight');
+  if (allocatedEl) allocatedEl.innerText = `${total}%`;
+  if (remainingEl) remainingEl.innerText = `${remaining}%`;
+
+  sliders.forEach((slider) => {
+    const ownValue = parseInt(slider.value || '0', 10);
+    const maxForThis = Math.min(TOTAL_WEIGHT_BUDGET, ownValue + remaining);
+    slider.max = String(maxForThis);
+
+    const valueEl = document.getElementById(`v-${slider.id.slice(2)}`);
+    if (valueEl) valueEl.innerText = `${ownValue}%`;
+  });
+}
+
+function handleWeightChange(changedSlider) {
+  const value = parseInt(changedSlider.value || '0', 10);
+  const max = parseInt(changedSlider.max || '100', 10);
+  if (value > max) {
+    changedSlider.value = String(max);
+  }
+  refreshWeightBudgetUI();
 }
 
 async function submitWeights(btnElement) {
@@ -292,6 +338,14 @@ async function submitWeights(btnElement) {
     const cleanId = feature.replace(/\W+/g, '');
     const slider = document.getElementById(`w-${cleanId}`);
     if (slider) customWeights[feature] = parseInt(slider.value);
+  }
+
+  const totalAssigned = Object.values(customWeights).reduce((a, b) => a + b, 0);
+  if (totalAssigned > TOTAL_WEIGHT_BUDGET) {
+    appendMessage('system', `<span style="color:var(--danger)">Total weight cannot exceed ${TOTAL_WEIGHT_BUDGET}%.</span>`);
+    btnElement.disabled = false;
+    btnElement.innerText = "▶ RUN MATH ENGINE";
+    return;
   }
 
   appendMessage('user', `Executing market search with custom scoring weights...`);

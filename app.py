@@ -8,18 +8,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import the Enterprise Pipeline!
-from core.pdf_processor import detect_component_type, parse_pdf_to_structured_pages
-from core.database import get_or_build_component_data
-from core.extractor import parse_datasheet_chunks
+from core.pdf_processor import detect_component_type, pdf_hash
+from core.database import (
+    get_or_build_component_data,
+    get_cached_pdf_extraction,
+    save_pdf_extraction,
+)
+from core.extractor import parse_datasheet_staged
 from core.similarity import rank_components
 
 app = FastAPI()
-
-# Supported categories
-SUPPORTED_TYPES = [
-    "Audio Codec", "LDO Regulator", "Buck Converter", "Op-Amp", 
-    "Microcontroller", "Resistor", "Capacitor", "MOSFET"
-]
 
 # Expected JSON format for the ranking endpoint
 class RankRequest(BaseModel):
@@ -35,7 +33,7 @@ async def serve_frontend():
 
 @app.post("/api/upload")
 async def upload_pdf(file: UploadFile = File(...)):
-    """STEP 1: Ingestion, Cache Check, and RAG Extraction."""
+    """STEP 1: Upload -> PDF hash cache check -> staged extraction on cache miss."""
     os.makedirs("datasheets", exist_ok=True)
     file_path = os.path.join("datasheets", file.filename)
     
@@ -43,10 +41,21 @@ async def upload_pdf(file: UploadFile = File(...)):
     with open(file_path, "wb") as f:
         f.write(await file.read())
         
-    # --- Execute Enterprise Pipeline ---
+    # Stage 0: PDF hash cache check (same file bytes => skip extraction)
+    pdf_sha = pdf_hash(file_path)
+    cached_record = get_cached_pdf_extraction(pdf_sha)
+    if cached_record:
+        print(f"🧠 PDF CACHE HIT for {file.filename} ({pdf_sha[:12]}...)")
+        return {
+            "detected_type": cached_record.get("detected_type", "Unknown"),
+            "specs": cached_record.get("specs", {}),
+            "cache_hit": True,
+        }
+
+    # --- Execute extraction pipeline on cache miss ---
     
     # Stage 1: Detect Component
-    detected_type = detect_component_type(file_path, SUPPORTED_TYPES)
+    detected_type = detect_component_type(file_path)
     if detected_type == "Unknown":
         return {"error": "Could not detect component type. Please upload a clear datasheet."}
         
@@ -55,22 +64,27 @@ async def upload_pdf(file: UploadFile = File(...)):
     if not target_specs or not market_competitors:
         return {"error": "Failed to generate market schema from DigiKey."}
         
-    # Stage 3: Parse PDF into Structured Memory
-    structured_pages = parse_pdf_to_structured_pages(file_path)
-    if not structured_pages:
-         return {"error": "Failed to extract readable text/tables from the PDF."}
-         
-    # Stage 4: Surgical RAG Extraction (Injecting market competitors for Few-Shot!)
-    user_extracted_specs = parse_datasheet_chunks(
-        structured_pages=structured_pages, 
+    # Stage 3/4/5: Notebook-style staged extraction
+    user_extracted_specs = parse_datasheet_staged(
+        filepath=file_path,
+        component_type=detected_type,
         required_features=target_specs,
         market_competitors=market_competitors,
-        component_name=file.filename
+        component_name=file.filename,
+        chunk_size=25,
+    )
+
+    save_pdf_extraction(
+        pdf_sha256=pdf_sha,
+        filename=file.filename,
+        detected_type=detected_type,
+        extracted_specs=user_extracted_specs,
     )
     
     return {
         "detected_type": detected_type,
-        "specs": user_extracted_specs
+        "specs": user_extracted_specs,
+        "cache_hit": False,
     }
 
 @app.post("/api/rank")

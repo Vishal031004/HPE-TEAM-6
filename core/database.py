@@ -12,6 +12,51 @@ DIGIKEY_CLIENT_ID = os.environ.get("DIGIKEY_CLIENT_ID")
 DIGIKEY_CLIENT_SECRET = os.environ.get("DIGIKEY_CLIENT_SECRET")
 MONGO_DB = "datasheet_hpe" 
 
+
+def _get_db():
+    """Returns Mongo database handle or None if not configured."""
+    if not MONGO_URI:
+        print("❌ MONGO_URI missing from .env file!")
+        return None
+    client = pymongo.MongoClient(MONGO_URI)
+    return client[MONGO_DB]
+
+
+def get_cached_pdf_extraction(pdf_sha256: str):
+    """Returns previously extracted record for an identical PDF hash, if available."""
+    db = _get_db()
+    if db is None:
+        return None
+    col = db["pdf_extractions"]
+    return col.find_one({"pdf_hash": pdf_sha256}, {"_id": 0})
+
+
+def save_pdf_extraction(
+    pdf_sha256: str,
+    filename: str,
+    detected_type: str,
+    extracted_specs: dict,
+):
+    """Upserts final extracted specs by PDF hash so re-uploads become instant cache hits."""
+    db = _get_db()
+    if db is None:
+        return
+    col = db["pdf_extractions"]
+    col.update_one(
+        {"pdf_hash": pdf_sha256},
+        {
+            "$set": {
+                "pdf_hash": pdf_sha256,
+                "filename": filename,
+                "detected_type": detected_type,
+                "specs": extracted_specs,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "source": "upload_pipeline",
+            }
+        },
+        upsert=True,
+    )
+
 def get_digikey_token_lazy():
     """Fetches a fresh token from the DigiKey OAuth endpoint."""
     resp = requests.post(
@@ -32,12 +77,9 @@ def get_or_build_component_data(component_type):
     Queries DigiKey using the exact component type, calculates the 30% threshold,
     and returns ALL features the market deems standard without hardcoded filtering.
     """
-    if not MONGO_URI:
-        print("❌ MONGO_URI missing from .env file!")
+    db = _get_db()
+    if db is None:
         return None, None
-
-    client = pymongo.MongoClient(MONGO_URI)
-    db = client[MONGO_DB]
     schema_col = db["feature_schemas"]
     
     # 1. CACHE CHECK
