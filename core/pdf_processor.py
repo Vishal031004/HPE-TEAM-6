@@ -11,6 +11,9 @@ from openai import OpenAI
 # Initialize OpenAI client (Unifying the stack!)
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+# ========================================================================
+# ENGINE A: COMPONENT DETECTION & STRUCTURED PARSING (Existing Logic)
+# ========================================================================
 
 def _normalize_detected_type(raw_type: str, available_types: Optional[List[str]], early_text: str) -> str:
     """Maps LLM output and common datasheet wording to canonical type names."""
@@ -269,7 +272,6 @@ def retrieve_feature_context(structured_pages: List[Dict[str, Any]], feature_nam
     Returns a highly concentrated prompt context containing only the relevant tables/text.
     """
     # 1. Clean the feature name to generate search keywords
-    # Converts "Voltage - Output (Min/Fixed)" -> ["voltage", "output", "min", "fixed"]
     clean_string = re.sub(r'[^a-zA-Z0-9\s]', ' ', feature_name).lower()
     keywords = [word for word in clean_string.split() if len(word) > 2]
     
@@ -315,3 +317,61 @@ def retrieve_feature_context(structured_pages: List[Dict[str, Any]], feature_nam
         context_blocks.append(block)
 
     return "\n".join(context_blocks)
+
+
+# ========================================================================
+# ENGINE B: ADVANCED RAG / CHATBOT INGESTION (New Logic)
+# ========================================================================
+
+def process_pdf_for_rag(filepath: str, filename: str) -> List[Dict[str, Any]]:
+    """
+    Hierarchical Chunking: Breaks the PDF into structured chunks (Text vs Tables)
+    and attaches exact metadata (Page numbers) so the LLM can cite its sources.
+    """
+    print(f"\n🧠 Processing {filename} for Advanced RAG...")
+    chunks = []
+    
+    try:
+        with pdfplumber.open(filepath) as pdf:
+            for p_idx, page in enumerate(pdf.pages):
+                page_num = p_idx + 1
+                
+                # 1. Extract and chunk tables (Highly structured data)
+                tables = page.extract_tables()
+                for t_idx, table in enumerate(tables):
+                    if not table: continue
+                    table_str = ""
+                    for row in table:
+                        if row:
+                            clean_row = [str(c).strip().replace('\n', ' ') if c else "" for c in row]
+                            table_str += " | ".join(clean_row) + "\n"
+                    
+                    if table_str.strip():
+                        chunks.append({
+                            "chunk_id": f"page_{page_num}_table_{t_idx}",
+                            "filename": filename,
+                            "page": page_num,
+                            "type": "table",
+                            "text": f"--- TABLE ON PAGE {page_num} ---\n{table_str}"
+                        })
+
+                # 2. Extract and chunk text (Semantic paragraphs)
+                # We split by double newlines to keep natural paragraphs together
+                raw_text = page.extract_text() or ""
+                paragraphs = [p.strip() for p in raw_text.split('\n\n') if len(p.strip()) > 40]
+                
+                for p_idx, para in enumerate(paragraphs):
+                    chunks.append({
+                        "chunk_id": f"page_{page_num}_text_{p_idx}",
+                        "filename": filename,
+                        "page": page_num,
+                        "type": "text",
+                        "text": para
+                    })
+                    
+        print(f"✅ Generated {len(chunks)} hierarchical chunks for Vector Storage.")
+        return chunks
+
+    except Exception as e:
+        print(f"❌ Error processing PDF for RAG: {e}")
+        return []

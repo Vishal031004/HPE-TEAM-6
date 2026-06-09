@@ -7,7 +7,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Import the Enterprise Pipeline!
+# ========================================================================
+# IMPORT DUAL-ENGINE PIPELINE
+# ========================================================================
+
+# Engine A: Math/Market Extraction
 from core.pdf_processor import detect_component_type, pdf_hash
 from core.database import (
     get_or_build_component_data,
@@ -17,6 +21,10 @@ from core.database import (
 from core.extractor import parse_datasheet_staged
 from core.similarity import rank_components
 
+# Engine B: Advanced RAG
+from core.pdf_processor import process_pdf_for_rag
+from core.database import store_rag_chunks, retrieve_rag_context
+from core.extractor import rerank_chunks_cross_encoder, answer_rag_question, reformulate_query
 app = FastAPI()
 
 # Expected JSON format for the ranking endpoint
@@ -24,6 +32,12 @@ class RankRequest(BaseModel):
     detected_type: str
     extracted_specs: dict
     weights: dict
+
+# Expected JSON format for the chat endpoint
+class ChatRequest(BaseModel):
+    question: str
+    filename: str
+    chat_history: list = []
 
 @app.get("/")
 async def serve_frontend():
@@ -33,7 +47,7 @@ async def serve_frontend():
 
 @app.post("/api/upload")
 async def upload_pdf(file: UploadFile = File(...)):
-    """STEP 1: Upload -> PDF hash cache check -> staged extraction on cache miss."""
+    """STEP 1: Upload -> Execute Math Engine & RAG Ingestion."""
     os.makedirs("datasheets", exist_ok=True)
     file_path = os.path.join("datasheets", file.filename)
     
@@ -41,19 +55,29 @@ async def upload_pdf(file: UploadFile = File(...)):
     with open(file_path, "wb") as f:
         f.write(await file.read())
         
-    # Stage 0: PDF hash cache check (same file bytes => skip extraction)
+    # Stage 0: PDF hash cache check
     pdf_sha = pdf_hash(file_path)
     cached_record = get_cached_pdf_extraction(pdf_sha)
+    
+    # Check if we already have the mathematical specs cached
     if cached_record:
         print(f"🧠 PDF CACHE HIT for {file.filename} ({pdf_sha[:12]}...)")
+        
+        # Even on a cache hit, we must ensure the RAG chunks are processed/stored
+        # (This is lightweight if chunks are already in Mongo, but ensures consistency)
+        rag_chunks = process_pdf_for_rag(file_path, file.filename)
+        if rag_chunks:
+            store_rag_chunks(rag_chunks)
+            
         return {
             "detected_type": cached_record.get("detected_type", "Unknown"),
             "specs": cached_record.get("specs", {}),
             "cache_hit": True,
         }
 
-    # --- Execute extraction pipeline on cache miss ---
+    # --- Execute Dual-Engine Pipeline on Cache Miss ---
     
+    # ENGINE A: MATH EXTRACTION
     # Stage 1: Detect Component
     detected_type = detect_component_type(file_path)
     if detected_type == "Unknown":
@@ -80,6 +104,12 @@ async def upload_pdf(file: UploadFile = File(...)):
         detected_type=detected_type,
         extracted_specs=user_extracted_specs,
     )
+
+    # ENGINE B: ADVANCED RAG INGESTION
+    print("\n--- TRIGGERING RAG INGESTION PIPELINE ---")
+    rag_chunks = process_pdf_for_rag(file_path, file.filename)
+    if rag_chunks:
+        store_rag_chunks(rag_chunks)
     
     return {
         "detected_type": detected_type,
@@ -101,3 +131,29 @@ async def rank_alternatives(request: RankRequest):
     )
     
     return {"results": top_5}
+
+@app.post("/api/chat")
+async def chat_with_datasheet(request: ChatRequest):
+    """Executes the Advanced RAG Pipeline (Hybrid Search + Cross-Encoder Re-Ranking)."""
+    
+    # 0. Contextual Query Reformulation (Fixes Vector Search Amnesia)
+    search_query = request.question
+    if request.chat_history:
+        search_query = reformulate_query(request.question, request.chat_history)
+        print(f"\n🔄 Original Query: '{request.question}'")
+        print(f"🎯 Reformulated for FAISS: '{search_query}'")
+
+    # 1. Execute FAISS Search using the REFORMULATED query
+    raw_chunks = retrieve_rag_context(search_query, request.filename, top_k=35)
+    
+    if not raw_chunks:
+        return {"answer": "I couldn't find any relevant text in the database to answer that question."}
+    
+    # 2. Local Cross-Encoder Re-Ranking
+    ranked_chunks = rerank_chunks_cross_encoder(search_query, raw_chunks, top_k=5)
+    
+    # 3. Agentic Grounded Generation
+    # We pass the ORIGINAL question to the final LLM so the conversation feels natural
+    answer = answer_rag_question(request.question, ranked_chunks, request.chat_history)
+    
+    return {"answer": answer}

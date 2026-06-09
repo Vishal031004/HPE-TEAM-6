@@ -14,6 +14,9 @@ from core.pdf_processor import (
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+# ========================================================================
+# ENGINE A: MATHEMATICAL SPEC EXTRACTION (Existing Logic)
+# ========================================================================
 
 def _parse_retry_delay_seconds(error_text: str, default_seconds: float = 0.5) -> float:
     """Parses rate-limit retry hints like 'Please try again in 10ms'."""
@@ -71,7 +74,7 @@ def get_full_json_examples(
     max_chars: int = 3500,
 ) -> str:
     """
-    Grabs the full JSON spec objects from 3 competitors.
+    Grabs the full JSON spec objects from competitors.
     This shows the LLM exactly what industry-standard feature-value pairs look like.
     """
     valid_competitors = [c for c in market_competitors if c.get("specs")]
@@ -79,7 +82,6 @@ def get_full_json_examples(
     if not valid_competitors:
         return "{}"
 
-    # Pick random competitors
     samples = random.sample(valid_competitors, min(sample_size, len(valid_competitors)))
     
     example_string = ""
@@ -106,7 +108,6 @@ def parse_datasheet_chunks(
     
     print(f"\n🚀 [Stage 3] Starting surgical RAG extraction for {component_name}...")
 
-    # Grab the 3 sets of JSON feature-value pairs ONCE to save processing time
     dynamic_json_examples = get_full_json_examples(market_competitors)
 
     if not structured_pages:
@@ -309,3 +310,145 @@ def parse_datasheet_staged(
     resolved = len([k for k, v in extracted_specs.items() if str(v).strip().lower() != "not found"])
     print(f"✅ Staged extraction complete: {resolved}/{len(required_features)} resolved")
     return extracted_specs
+
+
+# ========================================================================
+# ENGINE B: ADVANCED RAG Q&A (New Logic)
+# ========================================================================
+
+# Global variable to cache the model in memory
+cross_encoder_instance = None
+
+def rerank_chunks_cross_encoder(query: str, chunks: List[Dict], top_k: int = 5) -> List[Dict]:
+    """
+    Phase 3: Cross-Encoder Re-Ranking.
+    Optimized to load the model into memory exactly ONCE.
+    """
+    global cross_encoder_instance
+    
+    if not chunks:
+        return []
+
+    try:
+        # Lazily instantiate the model only once
+        if cross_encoder_instance == None:
+            print("⚙️ Loading Cross-Encoder model into memory (This happens ONCE)...")
+            from sentence_transformers import CrossEncoder
+            cross_encoder_instance = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', max_length=512)
+            print("✅ Cross-Encoder loaded successfully!")
+        
+        print(f"🧠 Re-Ranking {len(chunks)} retrieved chunks using Cross-Encoder...")
+        pairs = [[query, chunk.get('text', '')] for chunk in chunks]
+        scores = cross_encoder_instance.predict(pairs)
+        
+        # Attach scores and sort
+        for i, chunk in enumerate(chunks):
+            chunk['cross_score'] = float(scores[i])
+            
+        sorted_chunks = sorted(chunks, key=lambda x: x['cross_score'], reverse=True)
+        return sorted_chunks[:top_k]
+        
+    except ImportError:
+        print("⚠️ sentence-transformers not installed. Skipping cross-encoder reranking.")
+        return chunks[:top_k]
+    except Exception as e:
+        print(f"⚠️ Cross-encoder reranking failed: {e}")
+        return chunks[:top_k]
+    
+def reformulate_query(query: str, chat_history: List[Dict]) -> str:
+    """
+    Step 0: Translates conversational queries with pronouns/references into 
+    standalone search queries using the chat history.
+    """
+    if not chat_history:
+        return query
+
+    system_msg = (
+        "Given the following conversation history and the user's next question, "
+        "rephrase the user's question to be a standalone search query that contains all "
+        "the necessary context. Replace pronouns like 'it', 'those', or references like 'the second feature' "
+        "with the actual technical subject from the history.\n"
+        "If the question is already standalone, return it exactly as is.\n"
+        "Output ONLY the rephrased query, nothing else."
+    )
+
+    # Build memory context (we only need the last few messages to get the context)
+    messages = [{"role": "system", "content": system_msg}]
+    for msg in chat_history[-4:]: 
+        safe_content = msg.get("content") or ""
+        messages.append({"role": msg.get("role", "user"), "content": safe_content})
+        
+    messages.append({"role": "user", "content": f"Rewrite this query: {query}"})
+
+    try:
+        # We use a fast model for this to minimize latency
+        response = client.chat.completions.create(
+            model="gpt-4o-mini", # or "gpt-3.5-turbo" if you don't have mini access
+            messages=messages,
+            temperature=0.0
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"⚠️ Query reformulation failed: {e}")
+        return query
+
+
+def answer_rag_question(query: str, retrieved_chunks: List[Dict], chat_history: List[Dict] = None) -> str:
+    """
+    Phase 4: Agentic Generation & Validation.
+    Generates a grounded, cited answer using the retrieved and re-ranked MongoDB Atlas chunks.
+    Strictly enforces anti-hallucination rules.
+    """
+    if not retrieved_chunks:
+        return "I couldn't find any relevant information in the datasheet to answer that question."
+
+    # --- FIXED DIAGNOSTIC PRINT BLOCK ---
+    print("\n🔬 [DIAGNOSTIC] Top Chunks Passed to LLM after Re-Ranking:")
+    for idx, chunk in enumerate(retrieved_chunks):
+        score = chunk.get('cross_score', 'N/A')
+        score_str = f"{score:.4f}" if isinstance(score, (float, int)) else str(score)
+        
+        print(f"   Rank #{idx+1} | ID: {chunk.get('chunk_id')} | Cross-Score: {score_str}")
+        print(f"   Snippet: {chunk.get('text', '')[:150]}...\n")
+    # -------------------------------------
+
+    # 1. Format Chunks for the LLM Context Window
+    context_text = ""
+    for chunk in retrieved_chunks:
+        context_text += f"\n--- CHUNK ID: {chunk.get('chunk_id')} (Page {chunk.get('page')}) ---\n"
+        context_text += f"{chunk.get('text')}\n"
+
+    # 2. Formulate strict system instructions for anti-hallucination & layout tracking
+    system_prompt = (
+        "You are an expert hardware engineering assistant specialized in technical datasheet analysis. "
+        "Engage in a natural, conversational dialogue with the user while maintaining absolute technical accuracy.\n\n"
+        "CRITICAL RULES:\n"
+        "1. STRICT GROUNDING: Every technical specification or numerical value you provide MUST be suffixed with its exact source chunk ID tag in the format.\n"
+        "2. ENGINEERING REASONING: You are explicitly allowed to perform logical analysis. If the user asks 'Is 45°C safe?', and the context states the operating range is -40°C to +125°C, you MUST answer contextually: 'Yes, 45°C is perfectly safe because it falls within the specified operating range of -40°C to +125°C.'\n"
+        "3. CONVERSATIONAL MEMORY: You have access to the conversation history. If the user asks a follow-up question using pronouns (e.g., 'explain those features', 'is that voltage fine?'), use the chat history to understand what they are referring to and elaborate naturally.\n"
+        "4. ZERO HALLUCINATION: If the specific data required to answer the question or evaluate the condition is missing from both the context snippets and the chat history, you must politely decline. Reply: 'I cannot find the specifications for that in the provided datasheet.' Do not assume standard industry values.\n\n"
+        f"--- START RETRIEVED CONTEXT ---\n{context_text}\n--- END RETRIEVED CONTEXT ---"
+    )
+
+    # 3. Assemble message payload with conversational memory structures
+    messages = [{"role": "system", "content": system_prompt}]
+    if chat_history:
+        for msg in chat_history:
+            # FIX: If content is explicitly None/null, force it to an empty string safely
+            safe_content = msg.get("content") or ""
+            messages.append({"role": msg.get("role", "user"), "content": safe_content})
+    messages.append({"role": "user", "content": query})
+
+    # 4. Trigger localized agentic completion block
+    try:
+        # CHANGED: openai_client.chat.completions.create -> client.chat.completions.create
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            temperature=0.2  # Force maximum deterministic spec grounding
+        )
+        answer = response.choices[0].message.content.strip()
+        return answer
+    except Exception as e:
+        print(f"❌ OpenAI generation failed in answer_rag_question: {e}")
+        return "I encountered an internal error trying to process this answer via the LLM engine."
