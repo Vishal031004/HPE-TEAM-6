@@ -22,8 +22,8 @@ from core.extractor import parse_datasheet_staged
 from core.similarity import rank_components
 
 # Engine B: Advanced RAG
-from core.pdf_processor import process_pdf_for_rag
-from core.database import store_rag_chunks, retrieve_rag_context
+from core.pdf_processor import process_pdf_for_rag, pdf_hash
+from core.database import store_rag_chunks, retrieve_rag_context, has_rag_chunks
 from core.extractor import rerank_chunks_cross_encoder, answer_rag_question, reformulate_query
 app = FastAPI()
 
@@ -63,11 +63,11 @@ async def upload_pdf(file: UploadFile = File(...)):
     if cached_record:
         print(f"🧠 PDF CACHE HIT for {file.filename} ({pdf_sha[:12]}...)")
         
-        # Even on a cache hit, we must ensure the RAG chunks are processed/stored
-        # (This is lightweight if chunks are already in Mongo, but ensures consistency)
-        rag_chunks = process_pdf_for_rag(file_path, file.filename)
-        if rag_chunks:
-            store_rag_chunks(rag_chunks)
+        # Check if vectors already exist in Mongo
+        if not has_rag_chunks(pdf_sha):
+            rag_chunks = process_pdf_for_rag(file_path, file.filename)
+            if rag_chunks:
+                store_rag_chunks(rag_chunks, pdf_sha)
             
         return {
             "detected_type": cached_record.get("detected_type", "Unknown"),
@@ -107,9 +107,10 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     # ENGINE B: ADVANCED RAG INGESTION
     print("\n--- TRIGGERING RAG INGESTION PIPELINE ---")
-    rag_chunks = process_pdf_for_rag(file_path, file.filename)
-    if rag_chunks:
-        store_rag_chunks(rag_chunks)
+    if not has_rag_chunks(pdf_sha):
+        rag_chunks = process_pdf_for_rag(file_path, file.filename)
+        if rag_chunks:
+            store_rag_chunks(rag_chunks, pdf_sha)
     
     return {
         "detected_type": detected_type,
@@ -141,10 +142,16 @@ async def chat_with_datasheet(request: ChatRequest):
     if request.chat_history:
         search_query = reformulate_query(request.question, request.chat_history)
         print(f"\n🔄 Original Query: '{request.question}'")
-        print(f"🎯 Reformulated for FAISS: '{search_query}'")
+        print(f"🎯 Reformulated for Vector Search: '{search_query}'")
 
-    # 1. Execute FAISS Search using the REFORMULATED query
-    raw_chunks = retrieve_rag_context(search_query, request.filename, top_k=35)
+    file_path = os.path.join("datasheets", request.filename)
+    if os.path.exists(file_path):
+        pdf_sha = pdf_hash(file_path)
+    else:
+        pdf_sha = None
+
+    # 1. Execute DB Vector Search using the REFORMULATED query
+    raw_chunks = retrieve_rag_context(search_query, request.filename, pdf_sha256=pdf_sha, top_k=35)
     
     if not raw_chunks:
         return {"answer": "I couldn't find any relevant text in the database to answer that question."}

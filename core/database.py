@@ -170,125 +170,135 @@ def get_or_build_component_data(component_type):
 
 import os
 import json
-import numpy as np
 
 # ========================================================================
-# ENGINE B: RAG VECTOR DATABASE LOGIC (FAISS - Local)
+# ENGINE B: RAG VECTOR DATABASE LOGIC (MongoDB Atlas Vector Search)
 # ========================================================================
 
-# We will save the FAISS index and the text metadata in your project folder
-FAISS_INDEX_PATH = "local_faiss.index"
-FAISS_META_PATH = "local_faiss_meta.json"
+def has_rag_chunks(pdf_sha256: str) -> bool:
+    """Checks if the chunks for this PDF are already stored in MongoDB."""
+    db = _get_db()
+    if db is None:
+        return False
+    col = db["pdf_chunks"]
+    return col.find_one({"pdf_hash": pdf_sha256}) is not None
 
-def store_rag_chunks(chunks: list):
+def store_rag_chunks(chunks: list, pdf_sha256: str):
     """
-    Phase 2: Generates OpenAI embeddings and stores them in local FAISS.
-    Uses a companion JSON file to store the actual text.
+    Phase 2: Generates OpenAI embeddings and stores them in MongoDB Atlas.
     """
-    try:
-        import faiss
-    except ImportError:
-        print("❌ ERROR: FAISS not installed. Run: pip install faiss-cpu numpy")
+    db = _get_db()
+    if db is None:
+        print("❌ ERROR: MongoDB not configured.")
         return
 
     if not chunks:
         return
 
+    col = db["pdf_chunks"]
     filename = chunks[0]["filename"]
-    print(f"\n📊 Generating embeddings and syncing to FAISS for {filename}...")
+    
+    if has_rag_chunks(pdf_sha256):
+        print(f"  ✅ Already ingested RAG chunks for {filename} — skipping")
+        return
 
-    # We use IndexFlatIP (Inner Product) which equals Cosine Similarity 
-    # when the vectors are normalized (which OpenAI vectors are).
-    dimension = 1536
-    index = faiss.IndexFlatIP(dimension)
-    metadata = {}
-    embeddings_list = []
+    print(f"\n📊 Generating embeddings and syncing to MongoDB for {filename}...")
 
-    for i, chunk in enumerate(chunks):
+    # We batch texts for OpenAI API
+    texts = [c["text"] for c in chunks]
+    all_embeddings = []
+    
+    batch_size = 256
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
         try:
-            # Generate OpenAI embedding
-            response = openai_client.embeddings.create(
-                input=chunk["text"],
-                model="text-embedding-3-small"
-            )
-            embeddings_list.append(response.data[0].embedding)
-            
-            # Store the text and metadata in our dictionary
-            metadata[str(i)] = {
-                "chunk_id": chunk["chunk_id"],
-                "filename": chunk["filename"],
-                "page": chunk["page"],
-                "type": chunk["type"],
-                "text": chunk["text"]
-            }
+            resp = openai_client.embeddings.create(model="text-embedding-3-small", input=batch)
+            all_embeddings.extend([r.embedding for r in resp.data])
         except Exception as e:
-            print(f"⚠️ Error generating embedding for chunk {chunk['chunk_id']}: {e}")
-
-    if embeddings_list:
-        # Convert list of embeddings to a float32 NumPy matrix (required by FAISS)
-        embedding_matrix = np.array(embeddings_list).astype('float32')
-        
-        # Add to FAISS index
-        index.add(embedding_matrix)
-        
-        # Save FAISS index to disk
-        faiss.write_index(index, FAISS_INDEX_PATH)
-        
-        # Save Metadata to disk
-        with open(FAISS_META_PATH, "w") as f:
-            json.dump(metadata, f)
+            print(f"⚠️ Error generating embeddings: {e}")
+            return
             
-        print(f"✅ Successfully stored {len(embeddings_list)} vectorized chunks in FAISS.")
+    if len(all_embeddings) != len(chunks):
+        print("❌ ERROR: Mismatch between chunks and embeddings.")
+        return
+
+    docs = []
+    for chunk, emb in zip(chunks, all_embeddings):
+        docs.append({
+            "pdf_hash": pdf_sha256,
+            "chunk_id": chunk["chunk_id"],
+            "filename": chunk["filename"],
+            "page": chunk["page"],
+            "chunk_type": chunk.get("type", "text"),
+            "text": chunk["text"],
+            "embedding": emb,
+            "ingested_at": datetime.now(timezone.utc).isoformat()
+        })
+
+    if docs:
+        col.insert_many(docs)
+        print(f"✅ Successfully stored {len(docs)} vectorized chunks in MongoDB.")
 
 
-def retrieve_rag_context(query: str, filename: str, top_k: int = 15):
+def retrieve_rag_context(query: str, filename: str, pdf_sha256: str = None, top_k: int = 15):
     """
-    Phase 3: Performs a blazing fast local FAISS search.
-    Maps the resulting vector IDs back to the JSON text chunks.
+    Phase 3: Performs a blazing fast Atlas Vector Search.
     """
-    try:
-        import faiss
-    except ImportError:
+    db = _get_db()
+    if db is None:
         return []
 
-    print(f"\n🔎 Executing Local FAISS Search for: '{query}'")
-
-    if not os.path.exists(FAISS_INDEX_PATH) or not os.path.exists(FAISS_META_PATH):
-        print("❌ FAISS index not found. Please upload a document first.")
-        return []
+    print(f"\n🔎 Executing MongoDB Vector Search for: '{query}'")
+    col = db["pdf_chunks"]
 
     try:
-        # 1. Load FAISS index and Metadata
-        index = faiss.read_index(FAISS_INDEX_PATH)
-        with open(FAISS_META_PATH, "r") as f:
-            metadata = json.load(f)
-
-        # 2. Embed the user's question
+        # 1. Embed the user's question
         response = openai_client.embeddings.create(
             input=query,
             model="text-embedding-3-small"
         )
+        q_emb = response.data[0].embedding
         
-        # Convert query to FAISS-compatible numpy array
-        query_vector = np.array([response.data[0].embedding]).astype('float32')
+        # 2. Resolve pdf_hash if missing natively through standard Mongo query
+        if not pdf_sha256 and filename:
+            doc = col.find_one({'filename': filename}, {'pdf_hash': 1})
+            if doc:
+                pdf_sha256 = doc.get('pdf_hash')
 
-        # 3. Search FAISS (returns distances and the integer IDs of the closest vectors)
-        distances, indices = index.search(query_vector, top_k)
+        # 3. Filter match using ONLY pdf_hash (to respect vector index requirements)
+        match_filter = {}
+        if pdf_sha256:
+            match_filter = {'pdf_hash': pdf_sha256}
 
-        formatted_results = []
-        
-        # 4. Map the integer IDs back to our text chunks
-        for idx in indices[0]:
-            idx_str = str(idx)
-            if idx_str in metadata:
-                chunk = metadata[idx_str]
-                # Filter to make sure we only return text from the requested PDF
-                if chunk["filename"] == filename:
-                    formatted_results.append(chunk)
-        
-        print(f"🎯 Diagnostic Result: Found {len(formatted_results)} highly relevant chunks.")
-        return formatted_results
+        # 4. Aggregation pipeline for Vector Search
+        pipeline = [
+            {
+                '$vectorSearch': {
+                    'index': 'vector_index',
+                    'path': 'embedding',
+                    'queryVector': q_emb,
+                    'numCandidates': top_k * 10,
+                    'limit': top_k,
+                    'filter': match_filter
+                }
+            },
+            {
+                '$project': {
+                    '_id': 0,
+                    'text': 1,
+                    'page': 1,
+                    'type': '$chunk_type',
+                    'chunk_id': 1,
+                    'filename': 1,
+                    'score': {'$meta': 'vectorSearchScore'}
+                }
+            }
+        ]
+
+        results = list(col.aggregate(pipeline))
+        print(f"🎯 Diagnostic Result: Found {len(results)} highly relevant chunks.")
+        return results
 
     except Exception as e:
-        print(f"❌ FAISS Vector Search failed: {e}")
+        print(f"❌ MongoDB Vector Search failed: {e}")
         return []
