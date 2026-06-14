@@ -83,7 +83,7 @@
 
     /* Sliders & Math Results */
     .weight-panel { margin-top: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 24px; }
-    .weight-row { display: grid; grid-template-columns: 2.5fr 1.5fr 100px 40px; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .weight-row { display: grid; grid-template-columns: 2.5fr 1.5fr 100px 40px 30px; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
     .spec-name { font-family: var(--mono); font-size: 13px; color: var(--text); }
     .spec-val { font-size: 13px; color: var(--accent2); font-family: var(--mono); }
     input[type=range] { accent-color: var(--accent); width: 100%; cursor: pointer; margin: 0; }
@@ -102,6 +102,32 @@
     .chat-input:focus { border-color: var(--accent); }
     
     .citation-badge { background: rgba(0, 153, 255, 0.15); color: var(--accent2); font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0, 153, 255, 0.3); margin: 0 4px; display: inline-block; }
+
+    /* Live Pricing & Stock Badges */
+    .pricing-row { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+    .pricing-badge { font-family: var(--mono); font-size: 12px; padding: 6px 12px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; }
+    .badge-price { background: rgba(0, 153, 255, 0.12); color: var(--accent2); border: 1px solid rgba(0, 153, 255, 0.3); }
+    .badge-stock { border: 1px solid; }
+    .badge-stock.in-stock { background: rgba(0, 229, 176, 0.1); color: var(--accent); border-color: rgba(0, 229, 176, 0.3); }
+    .badge-stock.low-stock { background: rgba(255, 184, 0, 0.1); color: var(--warn); border-color: rgba(255, 184, 0, 0.3); }
+    .badge-stock.no-stock { background: rgba(255, 77, 106, 0.1); color: var(--danger); border-color: rgba(255, 77, 106, 0.3); }
+    .pricing-loading { font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 6px 0; }
+
+    /* Card Action Buttons */
+    .card-actions { display: flex; gap: 12px; margin-top: 16px; }
+    .card-actions a { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+    .btn-datasheet { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+    .btn-datasheet:hover { border-color: var(--accent2); color: var(--accent2); }
+    .btn-buy { background: var(--danger); border: 1px solid var(--danger); color: #fff; }
+    .btn-buy:hover { opacity: 0.85; }
+
+    /* Feature +/- Buttons */
+    .btn-remove { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 4px; cursor: pointer; width: 24px; height: 24px; font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; transition: 0.2s; }
+    .btn-remove:hover { border-color: var(--danger); color: var(--danger); }
+    .btn-add { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 4px; cursor: pointer; width: 24px; height: 24px; font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; transition: 0.2s; }
+    .btn-add:hover { border-color: var(--accent); color: var(--accent); }
+    .add-feature-bar { display: flex; align-items: center; gap: 10px; padding: 12px 0; }
+    .add-feature-bar select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-family: var(--mono); font-size: 12px; max-width: 200px; }
   </style>
 </head>
 
@@ -167,7 +193,21 @@
     let chatHistory = [];
     let extractedSpecs = {};
     let detectedType = "";
+    
+    // Feature selection state
+    let activeFeatures = [];
+    let inactiveFeatures = [];
+    let currentWeightValues = {};
+
     const TOTAL_WEIGHT_BUDGET = 100;
+
+    function extractPartNumber(filename) {
+      // Strip extension and common suffixes to get MPN
+      return filename
+        .replace(/\.[^.]+$/, '')          // Remove .pdf/.PDF
+        .replace(/[-_ ]?(datasheet|data[-_ ]?sheet|spec|specs|manual|rev[\w]*)/gi, '')  // Remove common suffixes
+        .trim();
+    }
 
     // --- DOM ELEMENTS ---
     const vAuth = document.getElementById('view-auth');
@@ -179,8 +219,14 @@
     const dropZone = document.getElementById('drop-zone');
 
     // --- INIT ---
-    if (currentUser) {
+    // Always show login page on fresh page load.
+    // Only auto-login if the user explicitly logged in during THIS browser session.
+    if (currentUser && sessionStorage.getItem('loggedIn')) {
       loadDashboard();
+    } else {
+      // Clear stale localStorage so user must re-authenticate
+      localStorage.removeItem('userId');
+      currentUser = null;
     }
 
     // --- VIEW MANAGEMENT ---
@@ -221,6 +267,7 @@
           document.getElementById('auth-msg').style.color = "var(--accent)";
         } else {
           localStorage.setItem("userId", data.user_id);
+          sessionStorage.setItem('loggedIn', 'true');
           currentUser = data.user_id;
           loadDashboard();
         }
@@ -229,6 +276,7 @@
 
     function logout() {
       localStorage.removeItem("userId");
+      sessionStorage.removeItem('loggedIn');
       currentUser = null;
       switchView('view-auth');
     }
@@ -411,28 +459,142 @@
     }
 
     function promptForWeights() {
+      // 1. Extract valid features
+      let validFeatures = [];
+      for (const [feature, rawValue] of Object.entries(extractedSpecs)) {
+        const displayVal = unpackValue(rawValue);
+        if (displayVal !== "Not Found" && displayVal !== "null") {
+          validFeatures.push(feature);
+        }
+      }
+
+      // 2. Initial selection: first 50% (rounded up)
+      const numToSelect = Math.ceil(validFeatures.length / 2);
+      activeFeatures = validFeatures.slice(0, numToSelect);
+      inactiveFeatures = validFeatures.slice(numToSelect);
+      currentWeightValues = {}; // Reset slider state
+
       let html = `<p>Detected Component: <strong style="color:var(--accent)">${detectedType}</strong></p>`;
-      html += `<div class="weight-panel">
+      html += `<div class="pricing-row" id="pricing-uploaded"><span class="pricing-loading">⏳ Fetching live pricing for uploaded component...</span></div>`;
+      html += `<div id="weight-panel-container"></div>`;
+      html += `<button class="btn" style="margin-top:20px;" onclick="submitWeights(this)">▶ RUN MATH ENGINE</button>`;
+      
+      appendMessage('system', html);
+      renderWeightPanel();
+
+      // Fetch pricing for the uploaded component
+      const mpn = extractPartNumber(currentFilename);
+      if (mpn) {
+        fetchUploadedComponentPricing(mpn);
+      }
+    }
+
+    // --- DYNAMIC FEATURE SELECTION ---
+    function saveCurrentWeights() {
+      activeFeatures.forEach(feature => {
+        const cleanId = feature.replace(/\W+/g, '');
+        const el = document.getElementById(`w-${cleanId}`);
+        if (el) currentWeightValues[feature] = parseInt(el.value || '0', 10);
+      });
+    }
+
+    function removeFeature(featureName) {
+      saveCurrentWeights();
+      activeFeatures = activeFeatures.filter(f => f !== featureName);
+      inactiveFeatures.push(featureName);
+      currentWeightValues[featureName] = 0; // reset weight
+      renderWeightPanel();
+    }
+
+    function addFeature() {
+      const selectEl = document.getElementById('add-feature-select');
+      if (!selectEl || !selectEl.value) return;
+      const featureName = selectEl.value;
+
+      saveCurrentWeights();
+      inactiveFeatures = inactiveFeatures.filter(f => f !== featureName);
+      activeFeatures.push(featureName);
+      if (!(featureName in currentWeightValues)) currentWeightValues[featureName] = 0;
+      renderWeightPanel();
+    }
+
+    function renderWeightPanel() {
+      const container = document.getElementById('weight-panel-container');
+      if (!container) return;
+
+      let html = `<div class="weight-panel">
         <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-family:var(--mono); font-size:12px;">
           <span>Allocated: <strong id="allocated-weight" style="color:var(--warn)">0%</strong></span>
           <span>Remaining: <strong id="remaining-weight" style="color:var(--accent)">100%</strong></span>
         </div>`;
 
-      for (const [feature, rawValue] of Object.entries(extractedSpecs)) {
-        const displayVal = unpackValue(rawValue);
-        if (displayVal === "Not Found" || displayVal === "null") continue;
+      activeFeatures.forEach(feature => {
+        const displayVal = unpackValue(extractedSpecs[feature]);
         const cleanId = feature.replace(/\W+/g, '');
+        const val = currentWeightValues[feature] || 0;
         html += `
           <div class="weight-row">
             <div class="spec-name">${feature}</div>
             <div class="spec-val">${displayVal}</div>
-            <input type="range" min="0" max="100" value="0" id="w-${cleanId}" oninput="handleWeightChange(this)">
-            <div class="weight-val" id="v-${cleanId}">0%</div>
+            <input type="range" min="0" max="100" value="${val}" id="w-${cleanId}" oninput="handleWeightChange(this)">
+            <div class="weight-val" id="v-${cleanId}">${val}%</div>
+            <button class="btn-remove" onclick="removeFeature('${feature}')" title="Remove">−</button>
+          </div>`;
+      });
+
+      if (inactiveFeatures.length > 0) {
+        html += `
+          <div class="add-feature-bar">
+            <select id="add-feature-select">
+              ${inactiveFeatures.map(f => `<option value="${f}">${f}</option>`).join('')}
+            </select>
+            <button class="btn-add" onclick="addFeature()" title="Add Feature">+</button>
           </div>`;
       }
-      html += `</div><button class="btn" style="margin-top:20px;" onclick="submitWeights(this)">▶ RUN MATH ENGINE</button>`;
-      appendMessage('system', html);
+
+      html += `</div>`;
+      container.innerHTML = html;
+      
+      // Update DOM values immediately to reflect state
+      activeFeatures.forEach(feature => {
+        const cleanId = feature.replace(/\W+/g, '');
+        const el = document.getElementById(`w-${cleanId}`);
+        if (el) handleWeightChange(el, false);
+      });
       refreshWeightBudgetUI();
+    }
+
+    async function fetchUploadedComponentPricing(partNumber) {
+      try {
+        const res = await fetch("/api/pricing", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ part_numbers: [partNumber] })
+        });
+        const data = await res.json();
+        const info = (data.pricing || {})[partNumber];
+        const el = document.getElementById('pricing-uploaded');
+        if (!el) return;
+
+        if (!info || info.error) {
+          el.innerHTML = `<span class="pricing-badge badge-price">💰 Price: N/A</span><span class="pricing-badge badge-stock no-stock">📦 Stock: N/A</span>`;
+          return;
+        }
+
+        const priceStr = info.price !== null ? `$${Number(info.price).toFixed(2)}` : 'N/A';
+        const stock = info.stock;
+        let stockClass = 'in-stock', stockLabel = '';
+        if (stock === null || stock === undefined) { stockClass = 'no-stock'; stockLabel = 'N/A'; }
+        else if (stock === 0) { stockClass = 'no-stock'; stockLabel = 'Out of Stock'; }
+        else if (stock < 100) { stockClass = 'low-stock'; stockLabel = `${stock.toLocaleString()} units`; }
+        else { stockClass = 'in-stock'; stockLabel = `${stock.toLocaleString()} units`; }
+
+        el.innerHTML = `
+          <span class="pricing-badge badge-price">💰 ${priceStr}</span>
+          <span class="pricing-badge badge-stock ${stockClass}">📦 ${stockLabel}</span>`;
+      } catch (err) {
+        const el = document.getElementById('pricing-uploaded');
+        if (el) el.innerHTML = `<span class="pricing-loading">⚠️ Pricing unavailable</span>`;
+      }
     }
 
     function getWeightSliders() { return Array.from(document.querySelectorAll('input[type="range"][id^="w-"]')); }
@@ -481,20 +643,85 @@
           let specHTML = "";
           for (const [k, v] of Object.entries(match.specs)) { specHTML += `<div class="spec-item"><span style="color:var(--muted)">${k}:</span> ${unpackValue(v)}</div>`; }
           resHTML += `
-            <div class="part-card">
+            <div class="part-card" id="card-${idx}">
               <div class="part-card-header">
                 <div class="mpn">#${idx + 1} - ${match.part_number}</div>
                 <div class="score-badge">${match.score}% MATCH</div>
               </div>
+              <div class="pricing-row" id="pricing-${idx}">
+                <span class="pricing-loading">⏳ Fetching live pricing...</span>
+              </div>
               <div class="spec-grid">${specHTML}</div>
+              <div class="card-actions">
+                <a class="btn-datasheet" id="ds-link-${idx}" href="https://www.google.com/search?q=${encodeURIComponent(match.part_number + ' datasheet filetype:pdf')}" target="_blank">📋 FIND DATASHEET</a>
+                <a class="btn-buy" id="buy-link-${idx}" href="https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(match.part_number)}" target="_blank">🛒 BUY ON DIGIKEY</a>
+              </div>
             </div>`;
         });
         appendMessage('system', resHTML);
+
+        // Fetch live pricing asynchronously (non-blocking)
+        fetchLivePricing(data.results);
+
       } catch (err) {
         removeTyping();
         appendMessage('system', `<span style="color:var(--danger)">Ranking failed.</span>`);
       }
       btn.disabled = false; btn.innerText = "▶ RUN MATH ENGINE";
+    }
+
+    async function fetchLivePricing(results) {
+      const partNumbers = results.map(r => r.part_number);
+      try {
+        const res = await fetch("/api/pricing", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ part_numbers: partNumbers })
+        });
+        const data = await res.json();
+        const pricing = data.pricing || {};
+
+        results.forEach((match, idx) => {
+          const el = document.getElementById(`pricing-${idx}`);
+          if (!el) return;
+
+          const info = pricing[match.part_number];
+          if (!info || info.error) {
+            el.innerHTML = `<span class="pricing-badge badge-price">💰 Price: N/A</span><span class="pricing-badge badge-stock no-stock">📦 Stock: N/A</span>`;
+            return;
+          }
+
+          // Format price in USD
+          const priceStr = info.price !== null ? `$${Number(info.price).toFixed(2)}` : 'N/A';
+
+          // Format stock with color coding
+          const stock = info.stock;
+          let stockClass = 'in-stock', stockLabel = '';
+          if (stock === null || stock === undefined) { stockClass = 'no-stock'; stockLabel = 'N/A'; }
+          else if (stock === 0) { stockClass = 'no-stock'; stockLabel = 'Out of Stock'; }
+          else if (stock < 100) { stockClass = 'low-stock'; stockLabel = `${stock.toLocaleString()} units`; }
+          else { stockClass = 'in-stock'; stockLabel = `${stock.toLocaleString()} units`; }
+
+          el.innerHTML = `
+            <span class="pricing-badge badge-price">💰 ${priceStr}</span>
+            <span class="pricing-badge badge-stock ${stockClass}">📦 ${stockLabel}</span>`;
+
+          // Update datasheet and buy links with URLs from DigiKey API
+          const dsLink = document.getElementById(`ds-link-${idx}`);
+          const buyLink = document.getElementById(`buy-link-${idx}`);
+          if (dsLink && info.datasheet_url) {
+            dsLink.href = info.datasheet_url;
+          }
+          if (buyLink && info.digikey_url) {
+            buyLink.href = info.digikey_url;
+          }
+        });
+      } catch (err) {
+        console.warn('Live pricing fetch failed:', err);
+        results.forEach((_, idx) => {
+          const el = document.getElementById(`pricing-${idx}`);
+          if (el) el.innerHTML = `<span class="pricing-loading">⚠️ Pricing unavailable</span>`;
+        });
+      }
     }
   </script>
 </body>

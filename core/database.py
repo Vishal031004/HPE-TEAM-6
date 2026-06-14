@@ -250,12 +250,19 @@ def retrieve_rag_context(query: str, filename: str = None, pdf_sha256 = None, to
             if doc:
                 pdf_sha256 = doc.get('pdf_hash')
 
-        # Supports single hash OR list of hashes for Global Search!
-        match_filter = {}
-        if isinstance(pdf_sha256, list):
-            match_filter = {'pdf_hash': {'$in': pdf_sha256}}
-        elif pdf_sha256:
-            match_filter = {'pdf_hash': pdf_sha256}
+        # TWO-STAGE APPROACH: $vectorSearch (broad) → $match (filter by hash)
+        # This avoids the need for pdf_hash to be declared as 'filterable' in the
+        # Atlas vector index definition, which is the root cause of global search
+        # only returning chunks from a subset of documents.
+        
+        # If filtering, fetch a much larger pool so all documents have representation
+        fetch_limit = top_k
+        if pdf_sha256:
+            if isinstance(pdf_sha256, list):
+                # Global search: fetch more to ensure all user documents are represented
+                fetch_limit = top_k * len(pdf_sha256) * 3
+            else:
+                fetch_limit = top_k * 5
 
         pipeline = [
             {
@@ -263,20 +270,38 @@ def retrieve_rag_context(query: str, filename: str = None, pdf_sha256 = None, to
                     'index': 'vector_index',
                     'path': 'embedding',
                     'queryVector': q_emb,
-                    'numCandidates': top_k * 10,
-                    'limit': top_k,
-                    'filter': match_filter
+                    'numCandidates': fetch_limit * 10,
+                    'limit': fetch_limit
                 }
             },
             {
                 '$project': {
                     '_id': 0, 'text': 1, 'page': 1, 'type': '$chunk_type', 
-                    'chunk_id': 1, 'filename': 1, 'score': {'$meta': 'vectorSearchScore'}
+                    'chunk_id': 1, 'filename': 1, 'pdf_hash': 1,
+                    'score': {'$meta': 'vectorSearchScore'}
                 }
             }
         ]
 
+        # Stage 2: Filter by pdf_hash AFTER vector search
+        if isinstance(pdf_sha256, list):
+            pipeline.append({'$match': {'pdf_hash': {'$in': pdf_sha256}}})
+        elif pdf_sha256:
+            pipeline.append({'$match': {'pdf_hash': pdf_sha256}})
+
+        # Stage 3: Limit to the desired top_k after filtering
+        pipeline.append({'$limit': top_k})
+
         results = list(col.aggregate(pipeline))
+        
+        # Diagnostic: log which documents contributed chunks
+        if pdf_sha256 and isinstance(pdf_sha256, list):
+            doc_counts = {}
+            for r in results:
+                fn = r.get('filename', 'unknown')
+                doc_counts[fn] = doc_counts.get(fn, 0) + 1
+            print(f"📊 [GLOBAL SEARCH] Chunk distribution across documents: {doc_counts}")
+
         return results
 
     except Exception as e:

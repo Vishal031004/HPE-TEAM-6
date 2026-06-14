@@ -381,30 +381,49 @@ def parse_datasheet_staged(
 # ENGINE B: ADVANCED RAG Q&A (New Logic)
 # ========================================================================
 
-# Global variable to cache the model in memory
-cross_encoder_instance = None
+# Global variable to cache the model in memory (loaded lazily on first query, NOT on app startup)
+_cross_encoder_instance = None
+_cross_encoder_loaded = False
+
+def _get_cross_encoder():
+    """Lazily loads the Cross-Encoder model on first use. Cached for all subsequent calls."""
+    global _cross_encoder_instance, _cross_encoder_loaded
+    if _cross_encoder_loaded:
+        return _cross_encoder_instance
+    
+    try:
+        print("⚙️ Loading Cross-Encoder model into memory (This happens ONCE per server lifetime)...")
+        from sentence_transformers import CrossEncoder
+        _cross_encoder_instance = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', max_length=512)
+        _cross_encoder_loaded = True
+        print("✅ Cross-Encoder loaded successfully!")
+        return _cross_encoder_instance
+    except ImportError:
+        print("⚠️ sentence-transformers not installed. Cross-encoder reranking disabled.")
+        _cross_encoder_loaded = True  # Don't retry
+        return None
+    except Exception as e:
+        print(f"⚠️ Cross-encoder loading failed: {e}")
+        _cross_encoder_loaded = True  # Don't retry
+        return None
 
 def rerank_chunks_cross_encoder(query: str, chunks: List[Dict], top_k: int = 5) -> List[Dict]:
     """
     Phase 3: Cross-Encoder Re-Ranking.
-    Optimized to load the model into memory exactly ONCE.
+    Model is loaded lazily on first query, NOT on server startup.
     """
-    global cross_encoder_instance
-    
     if not chunks:
         return []
 
+    model = _get_cross_encoder()
+    if model is None:
+        # No cross-encoder available — fall back to returning top chunks by vector score
+        return chunks[:top_k]
+
     try:
-        # Lazily instantiate the model only once
-        if cross_encoder_instance == None:
-            print("⚙️ Loading Cross-Encoder model into memory (This happens ONCE)...")
-            from sentence_transformers import CrossEncoder
-            cross_encoder_instance = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', max_length=512)
-            print("✅ Cross-Encoder loaded successfully!")
-        
         print(f"🧠 Re-Ranking {len(chunks)} retrieved chunks using Cross-Encoder...")
         pairs = [[query, chunk.get('text', '')] for chunk in chunks]
-        scores = cross_encoder_instance.predict(pairs)
+        scores = model.predict(pairs)
         
         # Attach scores and sort
         for i, chunk in enumerate(chunks):
@@ -413,9 +432,6 @@ def rerank_chunks_cross_encoder(query: str, chunks: List[Dict], top_k: int = 5) 
         sorted_chunks = sorted(chunks, key=lambda x: x['cross_score'], reverse=True)
         return sorted_chunks[:top_k]
         
-    except ImportError:
-        print("⚠️ sentence-transformers not installed. Skipping cross-encoder reranking.")
-        return chunks[:top_k]
     except Exception as e:
         print(f"⚠️ Cross-encoder reranking failed: {e}")
         return chunks[:top_k]
@@ -458,42 +474,75 @@ def reformulate_query(query: str, chat_history: List[Dict]) -> str:
         return query
 
 
-def answer_rag_question(query: str, retrieved_chunks: List[Dict], chat_history: List[Dict] = None) -> str:
+def answer_rag_question(query: str, retrieved_chunks: List[Dict], chat_history: List[Dict] = None, is_global: bool = False) -> str:
     """
     Phase 4: Agentic Generation & Validation.
     Generates a grounded, cited answer using the retrieved and re-ranked MongoDB Atlas chunks.
     Strictly enforces anti-hallucination rules.
+    
+    When is_global=True, the prompt switches to multi-document mode:
+    - Chunk context includes the source filename
+    - System prompt instructs the LLM to organize answers per component/document
     """
     if not retrieved_chunks:
         return "I couldn't find any relevant information in the datasheet to answer that question."
 
-    # --- FIXED DIAGNOSTIC PRINT BLOCK ---
+    # --- DIAGNOSTIC PRINT BLOCK ---
     print("\n🔬 [DIAGNOSTIC] Top Chunks Passed to LLM after Re-Ranking:")
     for idx, chunk in enumerate(retrieved_chunks):
         score = chunk.get('cross_score', 'N/A')
         score_str = f"{score:.4f}" if isinstance(score, (float, int)) else str(score)
+        src = f" | Source: {chunk.get('filename', '?')}" if is_global else ""
         
-        print(f"   Rank #{idx+1} | ID: {chunk.get('chunk_id')} | Cross-Score: {score_str}")
+        print(f"   Rank #{idx+1} | ID: {chunk.get('chunk_id')} | Cross-Score: {score_str}{src}")
         print(f"   Snippet: {chunk.get('text', '')[:150]}...\n")
     # -------------------------------------
 
     # 1. Format Chunks for the LLM Context Window
     context_text = ""
     for chunk in retrieved_chunks:
-        context_text += f"\n--- CHUNK ID: {chunk.get('chunk_id')} (Page {chunk.get('page')}) ---\n"
+        if is_global:
+            # Global mode: include source filename so LLM knows which document each chunk belongs to
+            context_text += f"\n--- CHUNK ID: {chunk.get('chunk_id')} | SOURCE: {chunk.get('filename', 'Unknown')} (Page {chunk.get('page')}) ---\n"
+        else:
+            # Single-doc mode: existing format (unchanged)
+            context_text += f"\n--- CHUNK ID: {chunk.get('chunk_id')} (Page {chunk.get('page')}) ---\n"
         context_text += f"{chunk.get('text')}\n"
 
-    # 2. Formulate strict system instructions for anti-hallucination & layout tracking
-    system_prompt = (
-        "You are an expert hardware engineering assistant specialized in technical datasheet analysis. "
-        "Engage in a natural, conversational dialogue with the user while maintaining absolute technical accuracy.\n\n"
-        "CRITICAL RULES:\n"
-        "1. STRICT GROUNDING: Every technical specification or numerical value you provide MUST be suffixed with its exact source chunk ID tag in the format.\n"
-        "2. ENGINEERING REASONING: You are explicitly allowed to perform logical analysis. If the user asks 'Is 45°C safe?', and the context states the operating range is -40°C to +125°C, you MUST answer contextually: 'Yes, 45°C is perfectly safe because it falls within the specified operating range of -40°C to +125°C.'\n"
-        "3. CONVERSATIONAL MEMORY: You have access to the conversation history. If the user asks a follow-up question using pronouns (e.g., 'explain those features', 'is that voltage fine?'), use the chat history to understand what they are referring to and elaborate naturally.\n"
-        "4. ZERO HALLUCINATION: If the specific data required to answer the question or evaluate the condition is missing from both the context snippets and the chat history, you must politely decline. Reply: 'I cannot find the specifications for that in the provided datasheet.' Do not assume standard industry values.\n\n"
-        f"--- START RETRIEVED CONTEXT ---\n{context_text}\n--- END RETRIEVED CONTEXT ---"
-    )
+    # 2. Formulate system prompt based on mode
+    if is_global:
+        # GLOBAL MODE: Multi-document awareness prompt
+        # Collect unique source documents for the prompt
+        source_docs = list(set(chunk.get('filename', 'Unknown') for chunk in retrieved_chunks))
+        doc_list = ", ".join(source_docs)
+        
+        system_prompt = (
+            "You are an expert hardware engineering assistant with access to MULTIPLE datasheets from a user's component library. "
+            "The retrieved context below contains chunks from DIFFERENT documents/components. "
+            f"Source documents in this context: {doc_list}\n\n"
+            "CRITICAL RULES:\n"
+            "1. MULTI-DOCUMENT AWARENESS: Each chunk is tagged with its SOURCE filename. You MUST clearly attribute every piece of data to its source document. "
+            "When answering, organize your response BY COMPONENT/DOCUMENT so the user can clearly see which data comes from which datasheet.\n"
+            "2. STRICT GROUNDING: Every technical specification or numerical value you provide MUST be attributed to its source chunk ID and source document.\n"
+            "3. COMPARATIVE ANALYSIS: When the user asks a comparative question (e.g., 'which has better X?', 'compare the Y across all components'), "
+            "present a structured comparison across all available documents. Use tables or bullet points to make differences clear.\n"
+            "4. COMPLETENESS: If the user asks about ALL components but some documents don't have the requested data, explicitly state which documents are missing that information rather than silently omitting them.\n"
+            "5. ENGINEERING REASONING: You are allowed to perform logical analysis and comparisons across documents.\n"
+            "6. ZERO HALLUCINATION: If the specific data is missing from the context, say so. Do not assume or infer values from one component's datasheet to another.\n\n"
+            f"--- START RETRIEVED CONTEXT (from {len(source_docs)} documents) ---\n{context_text}\n--- END RETRIEVED CONTEXT ---"
+        )
+    else:
+        # SINGLE-DOC MODE: Existing prompt (completely unchanged)
+        system_prompt = (
+            "You are an expert hardware engineering assistant specialized in technical datasheet analysis. "
+            "Engage in a natural, conversational dialogue with the user while maintaining absolute technical accuracy.\n\n"
+            "CRITICAL RULES:\n"
+            "1. STRICT GROUNDING: Every technical specification or numerical value you provide MUST be suffixed with its exact source chunk ID tag in the format.\n"
+            "2. ENGINEERING REASONING: You are explicitly allowed to perform logical analysis. If the user asks 'Is 45°C safe?', and the context states the operating range is -40°C to +125°C, you MUST answer contextually: 'Yes, 45°C is perfectly safe because it falls within the specified operating range of -40°C to +125°C.'\n"
+            "3. CONVERSATIONAL MEMORY: You have access to the conversation history. If the user asks a follow-up question using pronouns (e.g., 'explain those features', 'is that voltage fine?'), use the chat history to understand what they are referring to and elaborate naturally.\n"
+            "4. ZERO HALLUCINATION: If the specific data required to answer the question or evaluate the condition is missing from both the context snippets and the chat history, you must politely decline. Reply: 'I cannot find the specifications for that in the provided datasheet.' Do not assume standard industry values.\n\n"
+            f"--- START RETRIEVED CONTEXT ---\n{context_text}\n--- END RETRIEVED CONTEXT ---"
+        )
 
     # 3. Assemble message payload with conversational memory structures
     messages = [{"role": "system", "content": system_prompt}]
@@ -506,7 +555,6 @@ def answer_rag_question(query: str, retrieved_chunks: List[Dict], chat_history: 
 
     # 4. Trigger localized agentic completion block
     try:
-        # CHANGED: openai_client.chat.completions.create -> client.chat.completions.create
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
