@@ -1,0 +1,583 @@
+# Ranking Math Engine — Complete Walkthrough
+
+> **File**: [similarity.py](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py)
+> **Entry point**: `rank_components()` called from [app.py /api/rank](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/app.py#L141)
+
+---
+
+## Overview
+
+The engine compares the uploaded PDF's extracted specs against 20 DigiKey competitor components, feature by feature. Each comparison produces a weighted score, and the total determines the ranking.
+
+```
+Your PDF specs → compare each feature against each competitor → weighted score per feature → sum → percentage → rank → top 5
+```
+
+---
+
+## Step 1: Unit Normalization
+
+**Function**: [extract_normalized_number](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py#L22-L44)
+
+Before any math, values are converted to **base SI units** so `500mA` and `0.5A` are treated identically:
+
+| Raw Value | Number | Unit | Multiplier | Normalized |
+|-----------|--------|------|------------|------------|
+| `500mA` | 500 | mA | 1e-3 | **0.5 A** |
+| `3.3 V` | 3.3 | V | 1.0 | **3.3 V** |
+| `1.2 MHz` | 1.2 | MHz | 1e6 | **1,200,000 Hz** |
+| `100µA` | 100 | µA | 1e-6 | **0.0001 A** |
+| `47nF` | 47 | nF | 1e-9 | **4.7e-8 F** |
+
+The regex `([-+]?\d*\.?\d+)\s*([a-zA-Z]+)?` extracts the number and unit separately, then looks up the unit in the `UNIT_MULTIPLIERS` dictionary. If no recognized unit is found, the multiplier defaults to `1.0`.
+
+### Supported Unit Families
+
+| Domain | Units (small → large) |
+|--------|----------------------|
+| Current | nA → µA → mA → A → kA |
+| Voltage | µV → mV → V → kV |
+| Resistance | mΩ → Ω → kΩ → MΩ |
+| Frequency | Hz → kHz → MHz → GHz |
+| Power | µW → mW → W → kW |
+| Capacitance | pF → nF → µF → mF → F |
+| Time | ns → µs → ms → s |
+
+---
+
+## Step 2: Quantitative Scoring (Numerical Features)
+
+**Function**: [calculate_feature_score](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py#L46-L68)
+
+When **both** the user's value and competitor's value are numeric, the engine uses a **percentage-distance formula**:
+
+```python
+diff = abs(user_num - comp_num)             # Absolute distance
+max_val = max(abs(user_num), abs(comp_num)) # Normalize by the larger value
+percent_diff = diff / max_val               # Fractional difference (0.0 = identical)
+match_quality = max(0, 1.0 - percent_diff)  # Score: 1.0 = perfect, 0.0 = 100%+ off
+final_score = weight × match_quality        # Apply the user's weight
+```
+
+### Worked Example — Output Current
+
+| | Your PDF | Competitor A | Competitor B |
+|---|---|---|---|
+| Value | 500mA (0.5A) | 450mA (0.45A) | 1A (1.0A) |
+
+**Competitor A** (weight = 20):
+```
+diff       = |0.5 - 0.45| = 0.05
+max_val    = max(0.5, 0.45) = 0.5
+percent_diff = 0.05 / 0.5 = 0.10 (10% off)
+match_quality = 1.0 - 0.10 = 0.90
+score      = 20 × 0.90 = 18.0 points
+```
+
+**Competitor B** (weight = 20):
+```
+diff       = |0.5 - 1.0| = 0.5
+max_val    = max(0.5, 1.0) = 1.0
+percent_diff = 0.5 / 1.0 = 0.50 (50% off)
+match_quality = 1.0 - 0.50 = 0.50
+score      = 20 × 0.50 = 10.0 points
+```
+
+**Result: Competitor A scores 18/20, Competitor B scores 10/20** — A is the closer match.
+
+> [!IMPORTANT]
+> The engine measures **closeness**, not "better." A competitor with 1A output current (objectively superior to 500mA) scores LOWER because it's farther away numerically. This is by design for **replacement/alternative finding**, but not for **upgrade searching**.
+
+### Score Decay Curve
+
+| % Difference | Match Quality | Points (weight=20) |
+|---|---|---|
+| 0% (identical) | 1.00 | 20.0 |
+| 10% | 0.90 | 18.0 |
+| 25% | 0.75 | 15.0 |
+| 50% | 0.50 | 10.0 |
+| 75% | 0.25 | 5.0 |
+| 100%+ | 0.00 | 0.0 |
+
+---
+
+## Step 3: Qualitative Scoring (Text Features)
+
+**Code**: [Lines 70-77](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py#L70-L77)
+
+When values **cannot be parsed as numbers** (e.g., "I2C", "Surface Mount", "Digital"), the engine falls back to **substring matching**:
+
+```python
+u_str = str(user_val).lower()    # "surface mount"
+c_str = str(comp_val).lower()    # "surface mount, through hole"
+
+if u_str in c_str or c_str in u_str:
+    return weight    # Full marks (100% of weight)
+
+return 0             # No match (0 points)
+```
+
+**This is binary — either full score or zero. No partial credit.**
+
+| Your PDF | Competitor | Result |
+|---|---|---|
+| `"Digital"` | `"Digital"` | ✅ 100% — exact match |
+| `"I2C"` | `"I2C/SPI"` | ✅ 100% — `"i2c"` is a substring of `"i2c/spi"` |
+| `"Surface Mount"` | `"Through Hole"` | ❌ 0% — no substring overlap |
+| `"3-Axis"` | `"3-Axis"` | ✅ 100% — exact match |
+| `"VLGA-12"` | `"LGA-14"` | ❌ 0% — no substring overlap |
+
+---
+
+## Step 4: The Weight System
+
+**Function**: [rank_components](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py#L79-L117)
+
+The weight is a **scaling multiplier** on each feature's score. Higher weight = more influence on the final percentage.
+
+```python
+for feature, user_val in user_extracted_specs.items():
+    weight = feature_weights.get(feature, 10)  # Default = 10 if user didn't set a slider
+    max_possible_score += weight                # Track theoretical maximum
+
+    score = calculate_feature_score(user_val, comp_val, weight)
+    total_score += score
+
+final_percentage = (total_score / max_possible_score) × 100
+```
+
+### Full Worked Example — LDO Regulator
+
+**User's weight allocation (from the UI sliders):**
+
+| Feature | Weight | Your PDF | Comp A | Comp B |
+|---|---|---|---|---|
+| Output Current | **30%** | 500mA | 450mA | 1A |
+| Quiescent Current | **25%** | 130µA | 50µA | 120µA |
+| Package | **5%** | QFN-8 | QFN-8 | SOT-23 |
+| Output Type | **0%** | Fixed | Adjustable | Fixed |
+
+**max_possible_score** = 30 + 25 + 5 = **60**
+*(Output Type has weight 0% → excluded from both numerator and denominator)*
+
+---
+
+**Competitor A:**
+
+| Feature | Calculation | Score |
+|---|---|---|
+| Output Current (w=30) | diff=10%, quality=0.90 | 30 × 0.90 = **27.0** |
+| Quiescent Current (w=25) | diff=61.5%, quality=0.385 | 25 × 0.385 = **9.6** |
+| Package (w=5) | "qfn-8" in "qfn-8" → full match | **5.0** |
+| Output Type (w=0) | *skipped* | — |
+| **Total** | | **41.6 / 60 = 69.3%** |
+
+**Competitor B:**
+
+| Feature | Calculation | Score |
+|---|---|---|
+| Output Current (w=30) | diff=50%, quality=0.50 | 30 × 0.50 = **15.0** |
+| Quiescent Current (w=25) | diff=7.7%, quality=0.923 | 25 × 0.923 = **23.1** |
+| Package (w=5) | "qfn-8" NOT in "sot-23" → no match | **0.0** |
+| Output Type (w=0) | *skipped* | — |
+| **Total** | | **38.1 / 60 = 63.5%** |
+
+**Final Ranking: Comp A #1 (69.3%) → Comp B #2 (63.5%)**
+
+---
+
+### What Different Weight Values Mean
+
+| Weight | Behavior |
+|---|---|
+| **0%** | Feature **completely ignored** — removed from both numerator AND denominator |
+| **10% (default)** | Feature has standard importance alongside other default features |
+| **30%+** | Feature **dominates** the score — a bad match here tanks the overall % even if everything else matches perfectly |
+
+> [!NOTE]
+> The weight is NOT a threshold or filter. Setting Output Current to 30% does NOT mean "only show components with ≥30% match on current." It means "a mismatch on current hurts the overall score 3× more than a mismatch on a default 10% feature."
+
+---
+
+## Edge Cases
+
+| Scenario | Code Location | Behavior |
+|---|---|---|
+| Feature **missing from competitor** | [Line 103](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py#L103) | Gets **0 points** but weight IS added to `max_possible_score` → penalizes components with missing data |
+| Feature **"Not Found" in your PDF** | [Line 97](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py#L97) | **Skipped entirely** — neither numerator nor denominator affected |
+| Both values are **0** | [Line 56-57](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py#L56-L57) | Returns full weight (perfect match) |
+| **Range values** like `"±2, 4, 8, 12 or 16g"` | [Line 33](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py#L33) | Regex captures only the **first number** ("2"), so range information is lost |
+| **Percentage difference ≥ 100%** | [Line 67](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py#L67) | `max(0, ...)` clamps to 0 — cannot go negative |
+
+---
+
+## Flow Diagram
+
+```mermaid
+flowchart TD
+    A["Your PDF Feature Value"] --> C["extract_normalized_number()"]
+    B["Competitor Feature Value"] --> D["extract_normalized_number()"]
+    C --> E{"Both Numeric?"}
+    D --> E
+    E -->|"YES"| F["Distance Formula:<br/>quality = 1.0 - (diff / max)"]
+    E -->|"NO"| G["Substring Match:<br/>full score or 0"]
+    F --> H["score = weight × quality"]
+    G --> H
+    H --> I["Sum across all features"]
+    I --> J["÷ max_possible_score × 100"]
+    J --> K["Sort descending → Top 5"]
+```
+
+---
+
+# Proposed Enhancements
+
+The following are identified improvements to the current system, ordered by priority.
+
+---
+
+## Enhancement 1: Directional Awareness
+
+**Problem**: The current engine treats all numeric features as "closer = better." But from an engineering perspective:
+
+| Feature | Direction | Why |
+|---|---|---|
+| Output Current | **Higher is better** | More headroom for load |
+| PSRR | **Higher is better** | Better noise rejection |
+| Bandwidth | **Higher is better** | Faster response |
+| Quiescent Current | **Lower is better** | Less power wasted |
+| Voltage Dropout | **Lower is better** | Wider usable input range |
+| Noise | **Lower is better** | Cleaner signal |
+| Supply Voltage | **Closer is better** | Drop-in replacement compatibility |
+| Package | **Closer is better** | PCB footprint compatibility |
+
+**Current behavior** — a competitor with 1A output current vs your 500mA scores **50%** (penalized for being "far away"), even though 1A is objectively superior.
+
+**Proposed fix** — add a `direction` field per feature in the MongoDB schema and modify `calculate_feature_score`:
+
+```python
+def calculate_feature_score(user_val_str, comp_val_str, weight=10, direction="closer_better"):
+    user_num = extract_normalized_number(user_val_str)
+    comp_num = extract_normalized_number(comp_val_str)
+
+    if user_num is not None and comp_num is not None:
+        if direction == "higher_better" and comp_num >= user_num:
+            return weight  # No penalty — competitor meets or exceeds
+        elif direction == "lower_better" and comp_num <= user_num:
+            return weight  # No penalty — competitor is at or below
+
+        # Otherwise use distance formula as before
+        diff = abs(user_num - comp_num)
+        max_val = max(abs(user_num), abs(comp_num))
+        percent_diff = diff / max_val if max_val > 0 else 0
+        match_quality = max(0, 1.0 - percent_diff)
+        return weight * match_quality
+```
+
+**Schema change** in MongoDB `feature_schemas` collection:
+```javascript
+{
+    "component_type": "LDO Regulator",
+    "features": ["Current - Output", "Current - Quiescent (Iq)", ...],
+    "directions": {
+        "Current - Output": "higher_better",
+        "Current - Quiescent (Iq)": "lower_better",
+        "Voltage Dropout (Max)": "lower_better",
+        "Voltage - Supply": "closer_better",
+        "PSRR": "higher_better"
+    }
+}
+```
+
+**Impact**: Fundamentally changes ranking quality. A competitor with better specs will rank higher instead of being penalized for being "different."
+
+---
+
+## Enhancement 2: Fuzzy Evidence Validation
+
+**Problem**: The evidence validation gate in [extractor.py line 159](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/extractor.py#L159) uses **exact substring matching**. This blocks valid extractions when the LLM slightly reformats whitespace, punctuation, or line breaks.
+
+> [!NOTE]
+> This enhancement affects the **extraction pipeline**, not the ranking engine directly. However, it indirectly impacts ranking because blocked features become "Not Found" and get skipped during scoring.
+
+**Current behavior**:
+```python
+norm_evidence = normalize_text_for_comparison(str(evidence))
+if norm_evidence and norm_evidence in norm_context:  # Exact substring match
+    extracted_data[feature] = extracted_value         # ✅ Pass
+else:
+    # ❌ Blocked — even if the value is correct
+```
+
+**Failure example**:
+- PDF contains: `I/O Voltage 1.71V to 3.6V`
+- LLM returns evidence: `"I/O Voltage: 1.71V to 3.6V"` (added a colon)
+- **Result**: Blocked — the colon breaks the exact substring match
+
+**Proposed fix** — token-overlap matching:
+```python
+def fuzzy_evidence_match(evidence: str, context: str, threshold: float = 0.8) -> bool:
+    """Check if at least 80% of evidence tokens appear in the context."""
+    evidence_tokens = set(normalize_text_for_comparison(evidence).split())
+    context_tokens = set(normalize_text_for_comparison(context).split())
+    if not evidence_tokens:
+        return False
+    overlap = len(evidence_tokens & context_tokens) / len(evidence_tokens)
+    return overlap >= threshold
+```
+
+**Usage change** in `parse_datasheet_chunks`:
+```python
+# Replace:
+if norm_evidence and norm_evidence in norm_context:
+
+# With:
+if norm_evidence and fuzzy_evidence_match(str(evidence), context_string, threshold=0.8):
+```
+
+**Impact**: Unlocks features that the LLM correctly identifies but the evidence gate incorrectly blocks due to minor formatting differences. Expected to recover 2-4 additional features per PDF.
+
+---
+
+## Enhancement 3: Range Value Parsing
+
+**Problem**: The regex in [extract_normalized_number](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py#L33) captures only the **first number** in a string. Datasheet values often contain ranges:
+
+| Raw Value | Currently Extracts | Actual Meaning |
+|---|---|---|
+| `±2, 4, 8, 12 or 16g` | `2` | Configurable range: 2g to 16g |
+| `1.71 V ~ 3.6 V` | `1.71` | Supply voltage range |
+| `-40°C to +85°C` | `-40` | Operating temperature range |
+| `100/200/400 Hz` | `100` | Selectable bandwidth options |
+
+**Proposed fix** — extract min/max from ranges:
+```python
+def extract_range_values(val_str: str) -> dict:
+    """Extracts min/max/all values from range strings."""
+    if not val_str or not isinstance(val_str, str):
+        return None
+
+    # Find all numbers in the string
+    numbers = re.findall(r'[-+]?\d*\.?\d+', val_str)
+    if not numbers:
+        return None
+
+    floats = [float(n) for n in numbers]
+
+    # Detect unit from the string (reuse existing logic)
+    unit_match = re.search(r'[a-zA-Zµ°Ω]+', val_str.split(numbers[-1])[-1] if numbers else val_str)
+    unit = unit_match.group().lower() if unit_match else ""
+    multiplier = UNIT_MULTIPLIERS.get(unit, 1.0)
+
+    normalized = [f * multiplier for f in floats]
+
+    return {
+        "min": min(normalized),
+        "max": max(normalized),
+        "values": normalized
+    }
+```
+
+**Scoring with ranges** — compare range overlap:
+```python
+def range_overlap_score(user_range, comp_range, weight):
+    """Score based on how much the competitor's range covers the user's range."""
+    overlap_min = max(user_range["min"], comp_range["min"])
+    overlap_max = min(user_range["max"], comp_range["max"])
+
+    if overlap_max < overlap_min:
+        return 0  # No overlap
+
+    user_span = user_range["max"] - user_range["min"]
+    overlap_span = overlap_max - overlap_min
+
+    coverage = overlap_span / user_span if user_span > 0 else 1.0
+    return weight * min(1.0, coverage)
+```
+
+**Impact**: Properly handles configurable components (accelerometers with selectable g-ranges, ADCs with selectable sample rates). Prevents false low scores from partial number extraction.
+
+---
+
+## Enhancement 4: Smarter Text Matching
+
+**Problem**: Current text comparison is **binary** (substring match or zero). Many semantically close values get 0:
+
+| Your PDF | Competitor | Current Score | Better Score |
+|---|---|---|---|
+| `"QFN-8"` | `"QFN-10"` | 0% | ~80% (same package family) |
+| `"I2C, SPI"` | `"SPI, I2C"` | 100% (lucky substring) | 100% (set overlap) |
+| `"Fixed"` | `"Fixed, Adjustable"` | 100% (substring) | 100% ✓ |
+| `"LGA-12"` | `"VLGA-12"` | 0% | ~90% (very similar) |
+
+**Proposed fix** — set-based matching for multi-value features:
+```python
+def text_similarity_score(user_val: str, comp_val: str, weight: int) -> float:
+    """Score text features using set overlap instead of substring matching."""
+    # Split on common delimiters: comma, slash, ampersand, semicolon
+    user_tokens = set(
+        t.strip().lower() for t in re.split(r'[,/&;]', str(user_val)) if t.strip()
+    )
+    comp_tokens = set(
+        t.strip().lower() for t in re.split(r'[,/&;]', str(comp_val)) if t.strip()
+    )
+
+    if not user_tokens:
+        return 0
+
+    # Check exact set overlap first
+    overlap = len(user_tokens & comp_tokens)
+    if overlap > 0:
+        return weight * (overlap / len(user_tokens))
+
+    # Fallback: substring check on the full strings (current behavior)
+    u_str = str(user_val).lower()
+    c_str = str(comp_val).lower()
+    if u_str in c_str or c_str in u_str:
+        return weight
+
+    return 0
+```
+
+**Impact**: More accurate scoring for package types, interface protocols, and multi-option features. Prevents lucky/unlucky substring matches from dominating scores.
+
+---
+
+## Enhancement 5: Missing Feature Penalty Tuning
+
+**Problem**: When a competitor is **missing** a feature entirely (not in their DigiKey specs), the current code gives **0 points** but adds the weight to `max_possible_score`. This is the same penalty as a 100% mismatch — arguably too harsh, since "unknown" ≠ "incompatible."
+
+**Current behavior** at [similarity.py line 103](file:///c:/Users/vishn/OneDrive/Desktop/HPE/HPE-TEAM-6/core/similarity.py#L103):
+```python
+if feature in comp_specs:
+    score = calculate_feature_score(...)  # Could be 0-100%
+    total_score += score
+# If feature NOT in comp_specs: total_score += 0, but max_possible_score += weight
+```
+
+| Scenario | Points | Max Impact |
+|---|---|---|
+| Feature matches perfectly | weight × 1.0 | Best case |
+| Feature mismatches 100% | weight × 0.0 | Same as missing ← Problem |
+| Feature missing from competitor | 0 | Same as 100% mismatch ← Problem |
+
+**Proposed fix** — configurable penalty for missing data:
+```python
+MISSING_DATA_PENALTY = 0.3  # 30% penalty instead of 100%
+
+for feature, user_val in user_extracted_specs.items():
+    weight = feature_weights.get(feature, 10)
+    max_possible_score += weight
+
+    if feature in comp_specs:
+        score = calculate_feature_score(user_val, comp_specs[feature], weight)
+        total_score += score
+    else:
+        # Partial credit: unknown ≠ incompatible
+        total_score += weight * (1.0 - MISSING_DATA_PENALTY)
+```
+
+**Impact**: Components that are strong on known features aren't unfairly penalized for DigiKey not listing every parameter. Especially useful for newer or niche components with sparse data.
+
+---
+
+## Enhancement 6: Composite Score Breakdown
+
+**Problem**: The UI currently shows only a single percentage per competitor. Engineers can't tell **why** a component scored high or low, making it impossible to trust or debug the results.
+
+**Current UI**:
+```
+#1 — MCP1700  [87.3%]
+    Output Current: 450mA
+    Quiescent Current: 50µA
+    Package: QFN-8
+```
+
+**Proposed UI** — per-feature score bars:
+```
+#1 — MCP1700  [87.3%]
+    Output Current:      ████████░░ 90% (450mA vs 500mA)
+    Quiescent Current:   ████░░░░░░ 39% (50µA vs 130µA)  ← weak point
+    Package:             ██████████ 100% (QFN-8 = QFN-8)
+    PSRR:                ░░░░░░░░░░ 0% (missing)
+```
+
+**Backend change** — return per-feature scores from `rank_components`:
+```python
+ranked_results.append({
+    "part_number": comp["part_number"],
+    "score": round(final_percentage, 1),
+    "specs": comp_specs,
+    "score_breakdown": feature_scores  # NEW: {"Output Current": 90.0, "Package": 100.0, ...}
+})
+```
+
+**Frontend change** — render breakdown bars in the result cards:
+```javascript
+for (const [feature, pct] of Object.entries(match.score_breakdown)) {
+    const barWidth = Math.round(pct);
+    specHTML += `
+      <div class="spec-item">
+        <span class="spec-label">${feature}:</span>
+        <div class="score-bar" style="width:${barWidth}%"></div>
+        <span>${pct}%</span>
+      </div>`;
+}
+```
+
+**Impact**: Transparency — engineers can immediately see which features are driving the ranking and where competitors fall short. Zero changes to the scoring math itself.
+
+---
+
+## Enhancement 7: Tolerance Band Scoring
+
+**Problem**: The current scoring uses a **linear decay** — every 1% increase in difference reduces the score by 1%. But in real engineering, there's typically a **tolerance band** where components are considered "drop-in compatible."
+
+**Current linear decay**:
+```
+0% diff → 100% score
+10% diff → 90% score
+25% diff → 75% score
+50% diff → 50% score
+```
+
+**Proposed tolerance band decay**:
+```
+0-10% diff  → 100% score (within tolerance — perfect match)
+10-25% diff → gentle decay (95% → 75%)
+25%+ diff   → steep penalty
+```
+
+**Implementation**:
+```python
+def tolerance_band_quality(percent_diff: float) -> float:
+    """
+    Engineering-inspired scoring:
+    - Within ±10%: considered drop-in compatible → full score
+    - 10-25%: gradual decay (may need minor design changes)
+    - 25%+: steep penalty (likely incompatible)
+    """
+    if percent_diff <= 0.10:
+        return 1.0
+    elif percent_diff <= 0.25:
+        # Linear decay from 1.0 to 0.5 over the 10-25% range
+        return 1.0 - (percent_diff - 0.10) / 0.15 * 0.5
+    else:
+        # Steep decay from 0.5 to 0 over the 25-100% range
+        return max(0, 0.5 - (percent_diff - 0.25) * 0.667)
+```
+
+**Comparison of scoring curves**:
+
+| % Difference | Linear (current) | Tolerance Band (proposed) |
+|---|---|---|
+| 0% | 100% | 100% |
+| 5% | 95% | **100%** ← within tolerance |
+| 10% | 90% | **100%** ← edge of tolerance |
+| 15% | 85% | 83% |
+| 25% | 75% | 50% |
+| 50% | 50% | 33% |
+| 75% | 25% | 17% |
+| 100% | 0% | 0% |
+
+**Impact**: More realistic scoring that reflects engineering practice. A competitor with 490mA vs your 500mA (2% off) shouldn't lose points — they're functionally identical within manufacturing tolerances.

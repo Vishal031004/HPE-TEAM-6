@@ -1,11 +1,11 @@
 import os
 import json
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 # ========================================================================
 # IMPORT DUAL-ENGINE PIPELINE
@@ -39,6 +39,26 @@ class ChatRequest(BaseModel):
     filename: str
     chat_history: list = []
 
+# ========================================================================
+# BACKGROUND RAG INGESTION (runs after response is sent)
+# ========================================================================
+
+def _run_rag_ingestion(file_path: str, filename: str, pdf_sha: str):
+    """Background task: chunks, embeds, and stores vectors for the RAG chatbot."""
+    print("\n--- [BACKGROUND] TRIGGERING RAG INGESTION PIPELINE ---")
+    try:
+        if not has_rag_chunks(pdf_sha):
+            rag_chunks = process_pdf_for_rag(file_path, filename)
+            if rag_chunks:
+                store_rag_chunks(rag_chunks, pdf_sha)
+                print(f"--- [BACKGROUND] RAG ingestion complete for {filename} ---")
+            else:
+                print(f"--- [BACKGROUND] No chunks generated for {filename} ---")
+        else:
+            print(f"--- [BACKGROUND] RAG chunks already exist for {filename} ---")
+    except Exception as e:
+        print(f"--- [BACKGROUND] RAG ingestion failed: {e} ---")
+
 @app.get("/")
 async def serve_frontend():
     """Serves your index.html frontend."""
@@ -46,8 +66,12 @@ async def serve_frontend():
         return HTMLResponse(content=f.read(), status_code=200)
 
 @app.post("/api/upload")
-async def upload_pdf(file: UploadFile = File(...)):
-    """STEP 1: Upload -> Execute Math Engine & RAG Ingestion."""
+async def upload_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    force: bool = Query(False, description="Skip cache and force re-extraction"),
+):
+    """STEP 1: Upload -> Execute Math Engine. RAG ingestion runs in background."""
     os.makedirs("datasheets", exist_ok=True)
     file_path = os.path.join("datasheets", file.filename)
     
@@ -57,25 +81,25 @@ async def upload_pdf(file: UploadFile = File(...)):
         
     # Stage 0: PDF hash cache check
     pdf_sha = pdf_hash(file_path)
-    cached_record = get_cached_pdf_extraction(pdf_sha)
     
-    # Check if we already have the mathematical specs cached
-    if cached_record:
-        print(f"🧠 PDF CACHE HIT for {file.filename} ({pdf_sha[:12]}...)")
-        
-        # Check if vectors already exist in Mongo
-        if not has_rag_chunks(pdf_sha):
-            rag_chunks = process_pdf_for_rag(file_path, file.filename)
-            if rag_chunks:
-                store_rag_chunks(rag_chunks, pdf_sha)
+    # Check cache (skip if force=true)
+    if not force:
+        cached_record = get_cached_pdf_extraction(pdf_sha)
+        if cached_record:
+            print(f"🧠 PDF CACHE HIT for {file.filename} ({pdf_sha[:12]}...)")
             
-        return {
-            "detected_type": cached_record.get("detected_type", "Unknown"),
-            "specs": cached_record.get("specs", {}),
-            "cache_hit": True,
-        }
+            # Schedule RAG ingestion in background (non-blocking)
+            background_tasks.add_task(_run_rag_ingestion, file_path, file.filename, pdf_sha)
+                
+            return {
+                "detected_type": cached_record.get("detected_type", "Unknown"),
+                "specs": cached_record.get("specs", {}),
+                "cache_hit": True,
+            }
+    else:
+        print(f"⚡ FORCE RE-EXTRACTION for {file.filename} (cache bypassed)")
 
-    # --- Execute Dual-Engine Pipeline on Cache Miss ---
+    # --- Execute Math Engine Pipeline on Cache Miss ---
     
     # ENGINE A: MATH EXTRACTION
     # Stage 1: Detect Component
@@ -88,14 +112,14 @@ async def upload_pdf(file: UploadFile = File(...)):
     if not target_specs or not market_competitors:
         return {"error": "Failed to generate market schema from DigiKey."}
         
-    # Stage 3/4/5: Notebook-style staged extraction
+    # Stage 3/4/5: Sliding-window staged extraction
     user_extracted_specs = parse_datasheet_staged(
         filepath=file_path,
         component_type=detected_type,
         required_features=target_specs,
         market_competitors=market_competitors,
         component_name=file.filename,
-        chunk_size=25,
+        chunk_size=15,
     )
 
     save_pdf_extraction(
@@ -105,12 +129,8 @@ async def upload_pdf(file: UploadFile = File(...)):
         extracted_specs=user_extracted_specs,
     )
 
-    # ENGINE B: ADVANCED RAG INGESTION
-    print("\n--- TRIGGERING RAG INGESTION PIPELINE ---")
-    if not has_rag_chunks(pdf_sha):
-        rag_chunks = process_pdf_for_rag(file_path, file.filename)
-        if rag_chunks:
-            store_rag_chunks(rag_chunks, pdf_sha)
+    # Schedule RAG ingestion in background (non-blocking)
+    background_tasks.add_task(_run_rag_ingestion, file_path, file.filename, pdf_sha)
     
     return {
         "detected_type": detected_type,

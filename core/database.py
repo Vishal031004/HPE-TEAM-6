@@ -6,7 +6,7 @@ from collections import Counter
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 
 MONGO_URI = os.environ.get("MONGO_URI")
 DIGIKEY_CLIENT_ID = os.environ.get("DIGIKEY_CLIENT_ID")

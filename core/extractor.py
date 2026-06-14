@@ -101,17 +101,22 @@ def parse_datasheet_chunks(
     component_name: str = "Unknown Part"
 ) -> Dict[str, Any]:
     """
-    Batched extraction for a chunk.
+    Batched extraction for a small page chunk.
     Makes one LLM call for all required features and validates evidence per feature.
+    Works with small sliding windows (e.g., 5 pages) so every page gets full context.
     """
     extracted_data = {f: "Not Found" for f in required_features}
     
-    print(f"\n🚀 [Stage 3] Starting surgical RAG extraction for {component_name}...")
+    print(f"\n🚀 [EXTRACTION] Starting LLM extraction for {component_name}...")
 
     dynamic_json_examples = get_full_json_examples(market_competitors)
 
     if not structured_pages:
         return extracted_data
+
+    page_nums = [p['page_num'] for p in structured_pages]
+    print(f"  📑 Pages in this window: {page_nums}")
+    print(f"  🎯 Searching for {len(required_features)} features: {required_features}")
 
     context_blocks = []
     for p in structured_pages:
@@ -120,7 +125,7 @@ def parse_datasheet_chunks(
             block += "TABLES ON THIS PAGE:\n"
             for t in p["tables"]:
                 block += f"{t}\n"
-        block += f"TEXT ON THIS PAGE:\n{(p.get('text') or '')[:1200]}\n"
+        block += f"TEXT ON THIS PAGE:\n{(p.get('text') or '')[:2000]}\n"
         context_blocks.append(block)
 
     context_string = "\n".join(context_blocks)
@@ -128,14 +133,16 @@ def parse_datasheet_chunks(
         print("     ⚪ Context missing in PDF. Skipping LLM call.")
         return extracted_data
 
+    print(f"  📊 Total context size: {len(context_string)} chars")
+
     feature_list = "\n".join([f"- {f}" for f in required_features])
     prompt = BATCH_EXTRACTION_PROMPT.format(
         feature_list=feature_list,
         market_examples=dynamic_json_examples,
-        context=context_string[:12000],
+        context=context_string,
     )
 
-    print(f"  -> Batch extracting {len(required_features)} features in one call")
+    print(f"  🤖 Sending to GPT-4o ({len(required_features)} features in one batch call)...")
     try:
         response = _chat_completion_with_retry(
             model="gpt-4o",
@@ -148,6 +155,8 @@ def parse_datasheet_chunks(
         results = payload.get("results", {}) if isinstance(payload, dict) else {}
         norm_context = normalize_text_for_comparison(context_string)
 
+        print(f"\n  📋 [RESULTS] LLM returned data for {len(results)} features:")
+
         for feature in required_features:
             item = results.get(feature, {}) if isinstance(results, dict) else {}
             extracted_value = item.get("value") if isinstance(item, dict) else None
@@ -158,10 +167,16 @@ def parse_datasheet_chunks(
                 if norm_evidence and norm_evidence in norm_context:
                     extracted_data[feature] = extracted_value
                     print(f"     ✅ {feature}: {extracted_value}")
+                    print(f"        Evidence: \"{str(evidence)[:120]}\"")
                 else:
-                    print(f"     🚨 {feature}: evidence validation failed")
+                    print(f"     🚨 {feature}: EVIDENCE VALIDATION FAILED")
+                    print(f"        LLM Value:    \"{extracted_value}\"")
+                    print(f"        LLM Evidence: \"{str(evidence)[:150]}\"")
+                    print(f"        (This exact substring was NOT found in the raw PDF context)")
+            elif extracted_value and not evidence:
+                print(f"     ⚠️  {feature}: LLM returned value \"{extracted_value}\" but NO evidence string")
             else:
-                print(f"     ⚪ {feature}: Not Found")
+                print(f"     ⚪ {feature}: LLM returned null (not found in this window)")
 
     except Exception as e:
         print(f"     ❌ LLM Error (batch): {e}")
@@ -240,36 +255,56 @@ def parse_datasheet_staged(
     required_features: List[str],
     market_competitors: List[Dict],
     component_name: str = "Unknown Part",
-    chunk_size: int = 25,
+    chunk_size: int = 5,
 ) -> Dict[str, Any]:
     """
-    Notebook-style staged extraction:
-    1) First 25 pages text/tables
-    2) Graph pages in same chunk for missing
-    3) Next 25 pages repeat until done or PDF ends
+    Sliding-window staged extraction:
+    1) Process a small window of pages (default 5) — text + tables
+    2) Extract all possible features via LLM with semantic mapping
+    3) Run vision fallback on graph pages in the same window for still-missing features
+    4) Slide to next window and repeat only for features still not found
+    5) Stop when all features are resolved or entire PDF is exhausted
     """
-    print(f"\n🚀 Starting staged extraction for {component_name}...")
+    print(f"\n{'='*70}")
+    print(f"🚀 STAGED EXTRACTION PIPELINE for {component_name}")
+    print(f"   Component Type: {component_type}")
+    print(f"   Total Features to Extract: {len(required_features)}")
+    print(f"   Window Size: {chunk_size} pages")
+    print(f"{'='*70}")
+    
     extracted_specs = {f: "Not Found" for f in required_features}
 
     start = 0
     total_pages = None
+    window_num = 0
 
     while True:
+        window_num += 1
         end = start + chunk_size
-        print(f"\n📄 Processing pages {start + 1} to {end}...")
+        
+        print(f"\n{'─'*60}")
+        print(f"📄 WINDOW {window_num}: Pages {start + 1} to {end}")
+        print(f"{'─'*60}")
 
         chunk_pages, chunk_total = parse_pdf_chunk_to_structured_pages(filepath, start, end)
         total_pages = chunk_total if total_pages is None else total_pages
+        
+        actual_end = min(end, total_pages)
+        print(f"   PDF has {total_pages} total pages. This window covers pages {start + 1}-{actual_end}.")
 
         if not chunk_pages:
-            print("⚠️ No readable pages found in this chunk.")
+            print("   ⚠️ No readable pages found in this window. Ending.")
             break
 
         missing = get_missing_features(extracted_specs)
         if not missing:
+            print("   🎉 All features already found! Stopping early.")
             break
 
-        print(f"  -> Text/table pass for {len(missing)} missing features")
+        print(f"\n   🔍 TEXT/TABLE PASS — searching for {len(missing)} missing features:")
+        for f in missing:
+            print(f"      • {f}")
+
         chunk_result = parse_datasheet_chunks(
             structured_pages=chunk_pages,
             required_features=missing,
@@ -277,38 +312,68 @@ def parse_datasheet_staged(
             component_name=component_name,
         )
 
+        found_this_window = []
         for feature, value in chunk_result.items():
             if value and str(value).strip().lower() not in {"not found", "null", "none", ""}:
                 extracted_specs[feature] = value
+                found_this_window.append(feature)
+
+        print(f"\n   📊 WINDOW {window_num} TEXT RESULTS: Found {len(found_this_window)} features")
+        if found_this_window:
+            for f in found_this_window:
+                print(f"      ✅ {f} = {extracted_specs[f]}")
 
         missing = get_missing_features(extracted_specs)
         if missing:
-            print(f"  -> Graph pass for {len(missing)} still-missing features")
+            print(f"\n   👁️ VISION FALLBACK — {len(missing)} features still missing:")
+            for f in missing:
+                print(f"      • {f}")
+            
             figure_pages = get_figure_pages(filepath, start, end)
+            if figure_pages:
+                print(f"   Found {len(figure_pages)} graph/image pages in this window: {figure_pages}")
+            else:
+                print(f"   No graph/image pages found in this window.")
+                
             for page_num in figure_pages[:4]:
                 still_missing = get_missing_features(extracted_specs)
                 if not still_missing:
                     break
-                print(f"     Scanning graph page {page_num}...")
+                print(f"     🔬 Scanning graph page {page_num} for: {still_missing}")
                 try:
                     page_b64 = render_page_to_base64(filepath, page_num)
                     graph_result = extract_specs_from_graph_page(page_b64, still_missing, component_type)
                     for feature, value in graph_result.items():
                         if value and str(value).strip().lower() not in {"not found", "null", "none", ""}:
                             extracted_specs[feature] = value
+                            print(f"     ✅ Vision found: {feature} = {value}")
                 except Exception as e:
                     print(f"     ⚠️ Graph parse error on page {page_num}: {e}")
 
-        if not get_missing_features(extracted_specs):
+        # End-of-window summary
+        resolved_so_far = len([k for k, v in extracted_specs.items() if str(v).strip().lower() != "not found"])
+        still_missing = get_missing_features(extracted_specs)
+        print(f"\n   📈 PROGRESS: {resolved_so_far}/{len(required_features)} features resolved")
+        
+        if not still_missing:
+            print(f"   🎉 All features found! Stopping.")
             break
+        else:
+            print(f"   Still missing ({len(still_missing)}): {still_missing}")
 
         if end >= total_pages:
+            print(f"\n   📄 Reached end of PDF ({total_pages} pages). Stopping.")
             break
 
         start = end
 
     resolved = len([k for k, v in extracted_specs.items() if str(v).strip().lower() != "not found"])
-    print(f"✅ Staged extraction complete: {resolved}/{len(required_features)} resolved")
+    print(f"\n{'='*70}")
+    print(f"✅ EXTRACTION COMPLETE: {resolved}/{len(required_features)} features resolved")
+    not_found = [k for k, v in extracted_specs.items() if str(v).strip().lower() == "not found"]
+    if not_found:
+        print(f"❌ Not found: {not_found}")
+    print(f"{'='*70}")
     return extracted_specs
 
 
