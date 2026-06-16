@@ -1,7 +1,7 @@
 import os
 import requests
 from fastapi import FastAPI, UploadFile, File, Query, BackgroundTasks, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from typing import List
 from dotenv import load_dotenv
@@ -13,9 +13,10 @@ from core.database import (
     get_or_build_component_data, get_cached_pdf_extraction, save_pdf_extraction,
     register_user, login_user, add_user_pdf, get_user_pdfs, get_user_pdf_hashes,
     store_rag_chunks, retrieve_rag_context, has_rag_chunks,
-    get_digikey_token_lazy, DIGIKEY_CLIENT_ID
+    get_digikey_token_lazy, DIGIKEY_CLIENT_ID,
+    create_chat_session, get_user_sessions, attach_pdf_to_session, get_session_data, save_session_messages, delete_chat_session, toggle_pin_session, rename_chat_session
 )
-from core.extractor import parse_datasheet_staged, rerank_chunks_cross_encoder, answer_rag_question, reformulate_query
+from core.extractor import parse_datasheet_staged, rerank_chunks_cross_encoder, answer_rag_question, reformulate_query, route_user_intent
 from core.similarity import rank_components
 
 app = FastAPI()
@@ -33,11 +34,27 @@ class ChatRequest(BaseModel):
     question: str
     filename: str = ""
     user_id: str = None
+    session_id: str = None  
     is_global: bool = False
     chat_history: list = []
 
 class PricingRequest(BaseModel):
     part_numbers: List[str]
+
+class SessionCreateRequest(BaseModel):
+    user_id: str
+    session_name: str
+
+class AttachPdfRequest(BaseModel):
+    session_id: str
+    pdf_hash: str
+
+class SaveMessagesRequest(BaseModel):
+    session_id: str
+    new_messages: list
+
+class RenameRequest(BaseModel):
+    new_name: str
 
 def _run_rag_ingestion(file_path: str, filename: str, pdf_sha: str):
     try:
@@ -84,8 +101,9 @@ async def upload_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     user_id: str = Form(None),
-    force: bool = Query(False)
+    session_id: str = Form(None) # Added support for the new sessions!
 ):
+    """LAZY UPLOAD: Only saves the file, generates the hash, and triggers background RAG."""
     os.makedirs("datasheets", exist_ok=True)
     file_path = os.path.join("datasheets", file.filename)
     
@@ -94,37 +112,23 @@ async def upload_pdf(
         
     pdf_sha = pdf_hash(file_path)
 
+    # 1. Attach to user library
     if user_id:
         add_user_pdf(user_id, pdf_sha, file.filename)
-    
-    if not force:
-        cached_record = get_cached_pdf_extraction(pdf_sha)
-        if cached_record:
-            background_tasks.add_task(_run_rag_ingestion, file_path, file.filename, pdf_sha)
-            return {
-                "pdf_hash": pdf_sha,
-                "detected_type": cached_record.get("detected_type", "Unknown"),
-                "specs": cached_record.get("specs", {}),
-                "cache_hit": True,
-            }
-
-    detected_type = detect_component_type(file_path)
-    if detected_type == "Unknown":
-        return {"error": "Could not detect component type. Please upload a clear datasheet."}
         
-    target_specs, market_competitors = get_or_build_component_data(detected_type)
-    if not target_specs or not market_competitors:
-        return {"error": "Failed to generate market schema from DigiKey."}
-        
-    user_extracted_specs = parse_datasheet_staged(
-        filepath=file_path, component_type=detected_type, required_features=target_specs,
-        market_competitors=market_competitors, component_name=file.filename, chunk_size=15
-    )
+    # 2. Attach to specific active workspace/session
+    if session_id:
+        attach_pdf_to_session(session_id, pdf_sha)
 
-    save_pdf_extraction(pdf_sha, file.filename, detected_type, user_extracted_specs)
+    # 3. Spin up Vectorization in the background (Non-blocking!)
     background_tasks.add_task(_run_rag_ingestion, file_path, file.filename, pdf_sha)
     
-    return {"pdf_hash": pdf_sha, "detected_type": detected_type, "specs": user_extracted_specs, "cache_hit": False}
+    # 4. Return immediately. No math engine!
+    return {
+        "pdf_hash": pdf_sha, 
+        "filename": file.filename,
+        "message": "PDF uploaded successfully and is being vectorized for chat."
+    }
 
 @app.post("/api/rank")
 async def rank_alternatives(request: RankRequest):
@@ -134,19 +138,73 @@ async def rank_alternatives(request: RankRequest):
 
 @app.post("/api/chat")
 async def chat_with_datasheet(request: ChatRequest):
+    
+    # 1. Intent Routing
+    intent = route_user_intent(request.question, request.chat_history)
+    print(f"\n🧠 [AGENT ROUTER] Detected Intent: {intent.upper()}")
+
+    # ==========================================
+    # PATH A: THE MARKET ANALYSIS ENGINE
+    # ==========================================
+    if intent == "find_alternatives":
+        if not request.filename:
+            return {"answer": "Please specify which component you want me to find alternatives for."}
+            
+        file_path = os.path.join("datasheets", request.filename)
+        if not os.path.exists(file_path):
+            return {"answer": "I cannot access the file to run the market analysis."}
+
+        # We need the hash to check the database cache
+        pdf_sha = pdf_hash(file_path)
+        
+        # 🚨 RESTORED CACHING LOGIC
+        cached_record = get_cached_pdf_extraction(pdf_sha)
+        
+        if cached_record and cached_record.get("specs"):
+            print(f"🧠 CACHE HIT! Loading previously extracted specs for {request.filename}")
+            detected_type = cached_record.get("detected_type", "Unknown")
+            user_extracted_specs = cached_record.get("specs")
+        else:
+            print(f"⚠️ CACHE MISS! Running heavy LLM extraction for {request.filename}...")
+            
+            detected_type = detect_component_type(file_path)
+            if detected_type == "Unknown":
+                return {"answer": "I could not detect the specific component category needed to query the market."}
+                
+            target_specs, market_competitors = get_or_build_component_data(detected_type)
+            
+            user_extracted_specs = parse_datasheet_staged(
+                filepath=file_path, component_type=detected_type, required_features=target_specs,
+                market_competitors=market_competitors, component_name=request.filename, chunk_size=15
+            )
+            
+            # Save to database so we never have to extract this specific PDF again
+            save_pdf_extraction(pdf_sha, request.filename, detected_type, user_extracted_specs)
+
+        return {
+            "type": "interactive_ranking",
+            "detected_type": detected_type,
+            "extracted_specs": user_extracted_specs,
+            "answer": f"I extracted the specs for **{request.filename}**. Adjust your parametric weights below, and click 'Run Math Engine' to fetch live market alternatives."
+        }
+    
+    # ==========================================
+    # PATH B: STANDARD ADVANCED RAG
+    # ==========================================
     search_query = request.question
     if request.chat_history:
         search_query = reformulate_query(request.question, request.chat_history)
 
     target_hashes = None
 
-    # Handle Global vs Single PDF Search
-    if request.is_global and request.user_id:
-        target_hashes = get_user_pdf_hashes(request.user_id) # Returns a list of hashes
+    if request.is_global and request.session_id:
+        session_data = get_session_data(request.session_id)
+        if session_data and session_data.get("attached_pdfs"):
+            target_hashes = session_data["attached_pdfs"]
     elif request.filename:
         file_path = os.path.join("datasheets", request.filename)
         if os.path.exists(file_path):
-            target_hashes = pdf_hash(file_path) # Returns single string
+            target_hashes = pdf_hash(file_path)
 
     raw_chunks = retrieve_rag_context(search_query, request.filename, pdf_sha256=target_hashes, top_k=35)
     
@@ -157,6 +215,78 @@ async def chat_with_datasheet(request: ChatRequest):
     answer = answer_rag_question(request.question, ranked_chunks, request.chat_history, is_global=request.is_global)
     
     return {"answer": answer}
+
+@app.post("/api/sessions")
+async def create_session(request: SessionCreateRequest):
+    session_id = create_chat_session(request.user_id, request.session_name)
+    if session_id:
+        return {"session_id": session_id}
+    return {"error": "Failed to create session"}
+
+@app.get("/api/user/{user_id}/sessions")
+async def get_sessions(user_id: str):
+    return {"sessions": get_user_sessions(user_id)}
+
+@app.post("/api/sessions/attach")
+async def attach_pdf(request: AttachPdfRequest):
+    success = attach_pdf_to_session(request.session_id, request.pdf_hash)
+    if success:
+        return {"message": "PDF successfully attached to workspace"}
+    return {"error": "Failed to attach PDF. Session may not exist."}
+
+# ========================================================================
+# 🚨 CRITICAL FIX: The specific POST route is now BEFORE the dynamic GET route!
+# ========================================================================
+@app.post("/api/sessions/save_messages")
+async def save_messages(request: SaveMessagesRequest):
+    save_session_messages(request.session_id, request.new_messages)
+    return {"status": "success"}
+
+@app.get("/api/sessions/{session_id}")
+async def fetch_session(session_id: str):
+    data = get_session_data(session_id)
+    if not data:
+        return {"error": "Session not found"}
+        
+    # Cross-reference hashes with the user's PDF library to get actual filenames
+    user_pdfs = get_user_pdfs(data.get("user_id", ""))
+    hash_to_name = {p["pdf_hash"]: p["filename"] for p in user_pdfs} if user_pdfs else {}
+    
+    enriched_pdfs = []
+    for pdf_hash in data.get("attached_pdfs", []):
+        filename = hash_to_name.get(pdf_hash, "Datasheet.pdf")
+        enriched_pdfs.append({"hash": pdf_hash, "filename": filename})
+        
+    data["attached_pdfs"] = enriched_pdfs
+    return data
+
+@app.get("/api/datasheets/{filename}")
+async def get_datasheet(filename: str):
+    file_path = os.path.join("datasheets", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return {"error": "File not found"}
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str):
+    success = delete_chat_session(session_id)
+    if success:
+        return {"status": "success"}
+    return {"error": "Failed to delete session"}
+
+@app.patch("/api/sessions/{session_id}/pin")
+async def pin_session(session_id: str):
+    success = toggle_pin_session(session_id)
+    if success:
+        return {"status": "success"}
+    return {"error": "Failed to toggle pin"}
+
+@app.patch("/api/sessions/{session_id}/rename")
+async def rename_session(session_id: str, request: RenameRequest):
+    success = rename_chat_session(session_id, request.new_name)
+    if success:
+        return {"status": "success"}
+    return {"error": "Failed to rename session"}
 
 # ========================================================================
 # LIVE PRICING & STOCK (Never cached — always real-time from DigiKey)

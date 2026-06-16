@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from collections import Counter
 from dotenv import load_dotenv
 from openai import OpenAI
+import uuid
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 
@@ -69,6 +70,107 @@ def get_user_pdf_hashes(user_id):
     db = _get_db()
     if db is None: return []
     return [doc["pdf_hash"] for doc in list(db["user_pdfs"].find({"user_id": user_id}, {"pdf_hash": 1}))]
+
+
+# ========================================================================
+# ENGINE 0.5: CHAT SESSION MANAGEMENT
+# ========================================================================
+
+def create_chat_session(user_id: str, session_name: str = "New Workspace"):
+    """Creates a fresh, isolated chat session for the user."""
+    db = _get_db()
+    if db is None: return None
+    
+    session_id = f"session_{uuid.uuid4().hex[:16]}"
+    session_doc = {
+        "session_id": session_id,
+        "user_id": user_id,
+        "session_name": session_name,
+        "attached_pdfs": [], 
+        "messages": [],       
+        "is_pinned": False, 
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    db["chat_sessions"].insert_one(session_doc)
+    return session_id
+
+def get_user_sessions(user_id: str):
+    """Retrieves all chat sessions, sorting pinned ones to the top."""
+    db = _get_db()
+    if db is None: return []
+    col = db["chat_sessions"]
+    return list(col.find({"user_id": user_id}, {"_id": 0}).sort([("is_pinned", -1), ("updated_at", -1)]))
+
+def attach_pdf_to_session(session_id: str, pdf_hash: str):
+    """Links an uploaded datasheet to a specific workspace."""
+    db = _get_db()
+    if db is None: return False
+    
+    result = db["chat_sessions"].update_one(
+        {"session_id": session_id},
+        {
+            "$addToSet": {"attached_pdfs": pdf_hash}, # $addToSet prevents duplicates
+            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+        }
+    )
+    return result.modified_count > 0
+
+def get_session_data(session_id: str):
+    """Pulls the current state of a workspace (attached PDFs and memory)."""
+    db = _get_db()
+    if db is None: return None
+    return db["chat_sessions"].find_one({"session_id": session_id}, {"_id": 0})
+
+def save_session_messages(session_id: str, new_messages: list):
+    """Appends new user/assistant messages to the database memory."""
+    db = _get_db()
+    if db is None: return
+    
+    db["chat_sessions"].update_one(
+        {"session_id": session_id},
+        {
+            "$push": {"messages": {"$each": new_messages}},
+            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+        }
+    )
+
+def delete_chat_session(session_id: str):
+    """Permanently deletes a workspace."""
+    db = _get_db()
+    if db is None: return False
+    result = db["chat_sessions"].delete_one({"session_id": session_id})
+    return result.deleted_count > 0
+
+def rename_chat_session(session_id: str, new_name: str):
+    """Renames a workspace and updates its timestamp."""
+    db = _get_db()
+    if db is None: return False
+    
+    from datetime import datetime, timezone # Ensure this is imported if not already
+    result = db["chat_sessions"].update_one(
+        {"session_id": session_id},
+        {"$set": {
+            "session_name": new_name,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    return result.modified_count > 0
+
+def toggle_pin_session(session_id: str):
+    """Toggles the pin status of a workspace."""
+    db = _get_db()
+    if db is None: return False
+    session = db["chat_sessions"].find_one({"session_id": session_id})
+    if not session: return False
+    
+    new_status = not session.get("is_pinned", False)
+    result = db["chat_sessions"].update_one(
+        {"session_id": session_id},
+        {"$set": {"is_pinned": new_status}}
+    )
+    return result.modified_count > 0
 
 # ========================================================================
 # ENGINE A: MATH / MARKET DATABASE LOGIC 

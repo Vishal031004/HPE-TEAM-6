@@ -20,26 +20,24 @@ UNIT_MULTIPLIERS = {
 }
 
 def extract_normalized_number(val_str: str) -> float:
-    """
-    Finds the first float/int in a string AND its unit, 
-    then normalizes it to the base electrical unit.
-    Example: "500mA" -> 0.5. "3.3 V" -> 3.3. "1.2 MHz" -> 1200000.0
-    """
     if not val_str or not isinstance(val_str, str):
         return None
         
-    # Regex captures the number in group 1, and the unit letters in group 2
-    # e.g., "500 mA" -> Match 1: "500", Match 2: "mA"
     match = re.search(r"([-+]?\d*\.\d+|\d+)\s*([a-zA-Z\u03BC\u03A9]+)?", val_str)
     
     if not match:
         return None
         
     raw_number = float(match.group(1))
-    unit = match.group(2).lower() if match.group(2) else ""
+    raw_unit = match.group(2) if match.group(2) else ""
     
-    # Apply multiplier if the unit exists in our dictionary
-    multiplier = UNIT_MULTIPLIERS.get(unit, 1.0)
+    # 🚨 FIX: Safely handle Mega (M) vs milli (m) before lowercasing everything else
+    if raw_unit.startswith("M") and raw_unit.lower() in ["mhz", "mΩ", "mohm", "mw", "ma"]:
+        multiplier = 1e6
+    else:
+        unit_lower = raw_unit.lower()
+        # Ensure your UNIT_MULTIPLIERS dict only has the milli version ("mΩ": 1e-3)
+        multiplier = UNIT_MULTIPLIERS.get(unit_lower, 1.0)
     
     return raw_number * multiplier
 

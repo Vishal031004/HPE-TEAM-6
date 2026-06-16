@@ -473,6 +473,40 @@ def reformulate_query(query: str, chat_history: List[Dict]) -> str:
         print(f"⚠️ Query reformulation failed: {e}")
         return query
 
+def route_user_intent(query: str, chat_history: List[Dict]) -> str:
+    """
+    Step 0.5: The Agentic Brain.
+    Classifies if the user wants standard RAG Q&A or a heavy market analysis.
+    """
+    system_msg = (
+        "You are an intent classification routing AI. Analyze the user's latest message.\n"
+        "Classify the user's intent into exactly one of these two categories:\n"
+        "1. 'find_alternatives': The user is explicitly asking to find NEW external alternatives on the open market, search DigiKey, or find cheaper replacements.\n"
+        "2. 'information_retrieval': The user is asking to summarize, compare, or explain the datasheets ALREADY uploaded in the chat. (e.g., 'compare these two', 'how is this different from the other one', 'what is the max temp').\n\n"
+        "Output ONLY the category name as a raw string."
+    )
+    
+    messages = [{"role": "system", "content": system_msg}]
+    if chat_history:
+        # We only need the last couple of messages for intent context
+        for msg in chat_history[-2:]: 
+            messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+            
+    messages.append({"role": "user", "content": query})
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.0
+        )
+        intent = response.choices[0].message.content.strip().lower()
+        if "find_alternatives" in intent:
+            return "find_alternatives"
+        return "information_retrieval"
+    except Exception as e:
+        print(f"⚠️ Intent routing failed: {e}")
+        return "information_retrieval" # Safe fallback to standard RAG
 
 def answer_rag_question(query: str, retrieved_chunks: List[Dict], chat_history: List[Dict] = None, is_global: bool = False) -> str:
     """
