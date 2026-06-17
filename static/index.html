@@ -1,432 +1,1183 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Hardware Components Assistant</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet" />
-<style>
-  :root {
-    --bg:        #0d0f14;
-    --surface:   #141820;
-    --surface2:  #1c2230;
-    --border:    #2a3348;
-    --accent:    #00e5b0;
-    --accent2:   #0099ff;
-    --warn:      #ffb800;
-    --danger:    #ff4d6a;
-    --text:      #e2e8f0;
-    --muted:     #6b7a99;
-    --mono:      'IBM Plex Mono', monospace;
-    --sans:      'IBM Plex Sans', sans-serif;
-    --radius:    8px;
-  }
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hardware Components Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0d0f14; --surface: #141820; --surface2: #1c2230;
+      --border: #2a3348; --accent: #00e5b0; --accent2: #0099ff;
+      --warn: #ffb800; --danger: #ff4d6a; --text: #e2e8f0;
+      --muted: #6b7a99; --mono: 'IBM Plex Mono', monospace;
+      --sans: 'IBM Plex Sans', sans-serif; --radius: 8px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    
+    body {
+      background: var(--bg); color: var(--text); font-family: var(--sans);
+      font-size: 14px; line-height: 1.6; height: 100vh; display: flex;
+      flex-direction: column; overflow: hidden;
+    }
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    /* Common Buttons */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--accent); color: #000; font-family: var(--mono); font-size: 13px; font-weight: 600; border: none; border-radius: 4px; padding: 10px 20px; cursor: pointer; transition: 0.2s; }
+    .btn:hover:not(:disabled) { opacity: 0.88; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-outline:hover:not(:disabled) { border-color: var(--accent2); color: var(--accent2); }
 
-  /* --- CUSTOM DARK SCROLLBAR --- */
-  ::-webkit-scrollbar { width: 8px; height: 8px; }
-  ::-webkit-scrollbar-track { background: var(--bg); }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
-  * { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
+    /* Auth View */
+    #view-auth { display: flex; flex: 1; align-items: center; justify-content: center; }
+    .auth-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; width: 100%; max-width: 400px; }
+    .auth-box h2 { font-family: var(--mono); margin-bottom: 24px; text-align: center; color: var(--accent); }
+    .auth-input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 12px; border-radius: 4px; margin-bottom: 16px; font-family: var(--sans); outline: none; }
+    .auth-toggle { text-align: center; margin-top: 16px; font-size: 13px; color: var(--muted); cursor: pointer; }
 
-  body {
-    background: var(--bg); color: var(--text);
-    font-family: var(--sans); font-size: 14px;
-    line-height: 1.6; height: 100vh; display: flex; flex-direction: column;
-    overflow: hidden;
-  }
+    /* App Layout (Sidebar + Main) */
+    #view-app { display: none; flex: 1; height: 100vh; overflow: hidden; }
+    
+    /* Sidebar */
+    .sidebar { width: 280px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 16px; flex-shrink: 0; }
+    .logo-area { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+    .logo-icon { width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(135deg, var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .logo-area h1 { font-family: var(--mono); font-size: 14px; color: var(--text); margin: 0; }
+    .session-list { flex: 1; overflow-y: auto; margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+    /* 1. Base style for all items */
+    .session-item { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      padding: 10px 12px; 
+      position: relative;
+      border: 1px solid transparent; 
+      border-radius: 6px;
+      background: transparent;
+      transition: border-color 0.2s, color 0.2s;
+    }
 
-  /* Header - Moved to Top Left */
-  header {
-    background: var(--surface); border-bottom: 1px solid var(--border);
-    padding: 16px 24px; display: flex; align-items: center; justify-content: flex-start;
-    flex-shrink: 0;
-  }
-  .header-content {
-    display: flex; align-items: center; gap: 12px;
-  }
-  .logo-icon {
-    width: 32px; height: 32px; border-radius: 6px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    display: flex; align-items: center; justify-content: center; font-size: 16px;
-  }
-  h1 { font-family: var(--mono); font-size: 16px; color: var(--accent); letter-spacing: 0.02em; }
+    /* 2. Hover state: Only apply if it's NOT the active item */
+    .session-item:hover { 
+      border: 1px solid var(--border); 
+      color: var(--text); 
+    }
+    .session-item.active { 
+      border: 1px solid var(--accent) !important; 
+      background: transparent !important; 
+      color: var(--accent) !important; 
+    }
+    .session-item:hover:not(.active) { 
+      background: var(--surface2); 
+      color: var(--text); 
+    }
+    .session-item.active { 
+      background: var(--surface2) !important; 
+      border: 1px solid var(--border) !important; 
+      color: var(--accent) !important; 
+      border-left: 3px solid var(--accent) !important; 
+    }
+    .user-controls { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); }
+    .logout-btn { color: var(--danger); background: none; border: none; cursor: pointer; font-family: var(--mono); font-size: 12px; width: 100%; text-align: left; padding: 8px; }
 
-  /* Chat Area - Fixed Proportions */
-  .chat-container {
-    flex: 1; overflow-y: auto; padding: 32px 16px; display: flex; flex-direction: column; gap: 24px;
-    max-width: 850px; 
-    margin: 0 auto; width: 100%;
-  }
+    /* Main Workspace */
+    .main-workspace { flex: 1; display: flex; flex-direction: column; background: var(--bg); position: relative; }
+    
+    .workspace-header { padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; justify-content: space-between; align-items: center; }
+    .session-title { font-family: var(--mono); font-size: 16px; color: var(--text); }
+    .attached-pdfs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .pdf-pill { 
+      background: var(--surface2); 
+      border: 1px solid var(--border); 
+      padding: 4px 10px; 
+      border-radius: 12px; 
+      font-size: 11px; 
+      font-family: var(--mono); 
+      color: var(--accent2); 
+      text-decoration: none; 
+      cursor: pointer; 
+      transition: 0.2s; 
+      display: inline-flex; 
+      align-items: center; 
+    }
+    .pdf-pill:hover { 
+      border-color: var(--accent2); 
+      background: rgba(0, 153, 255, 0.1); 
+    }
+    /* Chat Area */
+    .chat-container { 
+      flex: 1; 
+      overflow-y: auto; 
+      padding: 32px 5%; /* Uses percentages to gracefully scale with your monitor width */
+      display: flex; 
+      flex-direction: column; 
+      gap: 24px; 
+      width: 100%; 
+      /* Removed max-width: 900px and margin: 0 auto */
+    }
+    
+    .msg-row { display: flex; width: 100%; }
+    .msg-row.user { justify-content: flex-end; }
+    
+    .bubble { padding: 20px 24px; border-radius: 12px; max-width: 85%; line-height: 1.6; }
+    .msg-row.system .bubble { background: var(--surface); border: 1px solid var(--border); }
+    .msg-row.user .bubble { background: var(--surface2); border: 1px solid var(--accent2); }
 
-  /* Message Bubbles */
-  .msg-row { display: flex; width: 100%; }
-  .msg-row.user { justify-content: flex-end; }
-  
-  .bubble {
-    padding: 20px 24px; border-radius: var(--radius);
-    position: relative;
-  }
-  
-  .msg-row.system .bubble { 
-    background: var(--surface); border: 1px solid var(--border); 
-    border-top-left-radius: 0; width: 100%; 
-  }
-  .msg-row.user .bubble { 
-    background: var(--surface2); border: 1px solid var(--accent2); 
-    border-top-right-radius: 0; max-width: 80%; 
-  }
+    /* Fix Markdown paragraph spacing inside the system bubble */
+    .bubble-content p { margin-bottom: 12px; }
+    .bubble-content p:last-child { margin-bottom: 0; }
 
-  .bubble-header {
-    font-family: var(--mono); font-size: 11px; color: var(--muted);
-    margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.1em;
-  }
-  .msg-row.user .bubble-header { color: var(--accent2); }
-  .msg-row.system .bubble-header { color: var(--accent); }
+    /* Input Area */
+    .chat-input-wrapper { background: var(--surface); border-top: 1px solid var(--border); padding: 16px 24px; display: flex; justify-content: center; flex-shrink: 0; }
+    .chat-input-inner { 
+      display: flex; 
+      gap: 12px; 
+      width: 100%; 
+      padding: 0 5%; /* Matches the padding of the chat container above */
+      align-items: center; 
+      /* Removed max-width: 900px */
+    }
+    /* ChatGPT-style Input Stack & Quote Preview */
+    .input-stack {
+      flex: 1; 
+      display: flex; 
+      flex-direction: column; 
+      background: var(--bg);
+      border: 1px solid var(--border); 
+      border-radius: var(--radius); 
+      transition: border-color 0.2s;
+      overflow: hidden; 
+    }
+    .input-stack:focus-within { border-color: var(--accent); }
+    
+    .quote-preview {
+      display: none; align-items: center; justify-content: space-between;
+      padding: 8px 12px; background: var(--surface2); border-bottom: 1px solid var(--border);
+      border-top-left-radius: var(--radius); border-top-right-radius: var(--radius);
+    }
+    .quote-preview-text {
+      font-family: var(--sans); font-size: 12px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-style: italic; max-width: 95%;
+    }
+    .quote-close-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
+    .quote-close-btn:hover { color: var(--danger); }
 
-  /* Drag & Drop Zone */
-  .drop-zone {
-    border: 2px dashed var(--border); border-radius: var(--radius);
-    padding: 40px; text-align: center; cursor: pointer; transition: 0.3s;
-    background: var(--bg); margin-top: 16px;
-  }
-  .drop-zone.dragover { border-color: var(--accent); background: rgba(0,229,176,0.05); }
-  .drop-zone p { font-family: var(--mono); color: var(--muted); margin-top: 12px; font-size: 13px;}
-  .drop-zone:hover p { color: var(--accent); }
+    /* Updated input to sit cleanly inside the stack */
+    .chat-input { 
+      background: transparent; border: none; color: var(--text); 
+      padding: 14px 16px; font-family: var(--sans); outline: none; width: 100%;
+    }
+    
+    .file-upload-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 14px; border-radius: var(--radius); cursor: pointer; transition: 0.2s; }
+    .file-upload-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .citation-badge { background: rgba(0, 153, 255, 0.15); color: var(--accent2); font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0, 153, 255, 0.3); margin: 0 4px; }
 
-  /* Sliders UI - Perfect Grid Alignment */
-  .weight-panel { 
-    margin-top: 16px; background: var(--bg); 
-    border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 24px; 
-  }
-  .weight-row {
-    display: grid;
-    grid-template-columns: 2.5fr 1.5fr 100px 40px; 
-    align-items: center; gap: 16px;
-    padding: 12px 0; border-bottom: 1px solid var(--border);
-  }
-  .weight-row:last-child { border-bottom: none; }
-  .spec-name { font-family: var(--mono); font-size: 13px; color: var(--text); }
-  .spec-val { font-size: 13px; color: var(--accent2); font-family: var(--mono);}
-  input[type=range] { accent-color: var(--accent); width: 100%; cursor: pointer; margin: 0;}
-  .weight-val { font-family: var(--mono); text-align: right; color: var(--warn); font-size: 13px;}
+    /* --- MATH SLIDERS & PRICING UI (Restored) --- */
+    .weight-panel { margin-top: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 24px; }
+    .weight-row { display: grid; grid-template-columns: 2.5fr 1.5fr 100px 40px 30px; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .spec-name { font-family: var(--mono); font-size: 13px; color: var(--text); }
+    .spec-val { font-size: 13px; color: var(--accent2); font-family: var(--mono); }
+    input[type=range] { accent-color: var(--accent); width: 100%; cursor: pointer; margin: 0; }
+    .weight-val { font-family: var(--mono); text-align: right; color: var(--warn); font-size: 13px; }
+    
+    .btn-remove, .btn-add { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 4px; cursor: pointer; width: 24px; height: 24px; font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; transition: 0.2s; }
+    .btn-remove:hover { border-color: var(--danger); color: var(--danger); }
+    .btn-add:hover { border-color: var(--accent); color: var(--accent); }
+    .add-feature-bar { display: flex; align-items: center; gap: 10px; padding: 12px 0; }
+    .add-feature-bar select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-family: var(--mono); font-size: 12px; max-width: 200px; }
 
-  /* Result Cards */
-  .part-card {
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 20px; margin-top: 16px;
-  }
-  .part-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;}
-  .mpn { font-family: var(--mono); font-size: 16px; font-weight: 600; color: var(--accent); }
-  .score-badge { background: rgba(0,229,176,0.1); color: var(--accent); padding: 4px 10px; border-radius: 4px; font-family: var(--mono); font-weight: 600;}
-  
-  .spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-  .spec-item { background: var(--surface2); padding: 8px 12px; border-radius: 4px; font-size: 12px; font-family: var(--mono); border: 1px solid var(--border);}
-  .spec-label { color: var(--muted); }
+    .part-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 16px; }
+    .part-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+    .mpn { font-family: var(--mono); font-size: 16px; font-weight: 600; color: var(--accent); }
+    .score-badge { background: rgba(0, 229, 176, 0.1); color: var(--accent); padding: 4px 10px; border-radius: 4px; font-family: var(--mono); font-weight: 600; }
+    .spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .spec-item { background: var(--surface2); padding: 8px 12px; border-radius: 4px; font-size: 12px; font-family: var(--mono); border: 1px solid var(--border); }
+    
+    .pricing-row { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+    .pricing-badge { font-family: var(--mono); font-size: 12px; padding: 6px 12px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; }
+    .badge-price { background: rgba(0, 153, 255, 0.12); color: var(--accent2); border: 1px solid rgba(0, 153, 255, 0.3); }
+    .badge-stock { border: 1px solid; }
+    .badge-stock.in-stock { background: rgba(0, 229, 176, 0.1); color: var(--accent); border-color: rgba(0, 229, 176, 0.3); }
+    .badge-stock.low-stock { background: rgba(255, 184, 0, 0.1); color: var(--warn); border-color: rgba(255, 184, 0, 0.3); }
+    .badge-stock.no-stock { background: rgba(255, 77, 106, 0.1); color: var(--danger); border-color: rgba(255, 77, 106, 0.3); }
+    .pricing-loading { font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 6px 0; }
 
-  /* Buttons */
-  .btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    background: var(--accent); color: #000; font-family: var(--mono);
-    font-size: 13px; font-weight: 600; border: none; border-radius: 4px;
-    padding: 10px 20px; cursor: pointer; transition: 0.2s; text-decoration: none;
-  }
-  .btn:hover { opacity: 0.88; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-  .btn-outline:hover:not(:disabled) { border-color: var(--accent2); color: var(--accent2); }
-  .btn-digikey { background: #CC0000; color: white; } 
-  .btn-digikey:hover { background: #FF0000; }
-  
-  .card-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+    .card-actions { display: flex; gap: 12px; margin-top: 16px; }
+    .card-actions a { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+    .btn-datasheet { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+    .btn-datasheet:hover { border-color: var(--accent2); color: var(--accent2); }
+    .btn-buy { background: var(--danger); border: 1px solid var(--danger); color: #fff; }
+    .btn-buy:hover { opacity: 0.85; }
 
-  /* Loading indicator */
-  .typing { display: flex; gap: 4px; align-items: center; height: 24px; }
-  .dot { width: 6px; height: 6px; background: var(--muted); border-radius: 50%; animation: blink 1.4s infinite both; }
-  .dot:nth-child(1) { animation-delay: 0s; }
-  .dot:nth-child(2) { animation-delay: 0.2s; }
-  .dot:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+    .sort-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-family: var(--mono); font-size: 12px; padding: 6px 14px; border-radius: 6px; cursor: pointer; transition: background 0.2s, border-color 0.2s, color 0.2s; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+    .sort-btn:hover { background: var(--surface); border-color: var(--accent); color: var(--accent); }
 
-</style>
+    /* Sidebar Kebab Menu & Pinning */
+    .session-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; position: relative; }
+    .session-title-text { flex: 1; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+    .pin-icon { color: var(--accent); font-size: 12px; }
+    
+    .kebab-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 2px 8px; border-radius: 4px; font-size: 16px; display: none; }
+    .session-item:hover .kebab-btn, .dropdown-menu.show ~ .kebab-btn { 
+      display: block; 
+    }
+    .kebab-btn:hover { background: var(--surface); color: var(--text); }
+    
+    /* Bulletproof Dropdown Menu */
+    .dropdown-menu { 
+      display: none; 
+      position: fixed; /* Escapes the sidebar container entirely! */
+      background: var(--surface2); 
+      border: 1px solid var(--border); 
+      border-radius: 6px; 
+      padding: 4px; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.8); 
+      z-index: 9999; /* Forces it above EVERYTHING */
+      flex-direction: column; 
+      gap: 2px; 
+      min-width: 110px; 
+    }
+    .dropdown-menu.show { display: flex; }
+    .dropdown-btn { background: none; border: none; color: var(--text); text-align: left; padding: 6px 12px; font-family: var(--sans); font-size: 12px; cursor: pointer; border-radius: 4px; display: flex; justify-content: space-between; }
+    .dropdown-btn:hover { background: var(--surface); }
+    .dropdown-btn.delete { color: var(--danger); }
+    .dropdown-btn.delete:hover { background: rgba(255, 77, 106, 0.1); }
+
+    /* GPT-Style Floating Text Selection Tooltip */
+    #selection-tooltip { position: absolute; display: none; background: var(--surface2); border: 1px solid var(--accent); color: var(--accent); font-family: var(--mono); font-size: 11px; padding: 6px 12px; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 1000; transition: background 0.2s, color 0.2s; }
+    #selection-tooltip:hover { background: var(--accent); color: #000; }
+
+    /* Drag & Drop Visual Cue */
+    .main-workspace { transition: border 0.2s, background 0.2s; }
+    .main-workspace.drag-over {
+      border: 2px dashed var(--accent);
+      background: rgba(0, 229, 176, 0.03); 
+    }
+
+    /* File Staging Area inside Input Stack */
+    .file-staging-area { 
+      display: flex; 
+      flex-wrap: wrap; 
+      gap: 10px; 
+      padding: 0 16px; 
+    }
+    .file-staging-area:not(:empty) { 
+      padding-top: 12px; /* Adds space only when files are present */
+    }
+    
+    .staging-pill { 
+      display: flex; 
+      align-items: center; 
+      gap: 8px; 
+      background: var(--surface); 
+      border: 1px solid var(--border); 
+      padding: 8px 12px; 
+      border-radius: 8px; 
+      font-size: 12px; 
+      font-family: var(--sans); 
+      color: var(--text);
+    }
+    /* ChatGPT-style File Cards */
+    .file-staging-area {
+      display: flex; flex-wrap: wrap; gap: 12px; padding: 0 16px;
+    }
+    .file-staging-area:not(:empty) { padding-top: 12px; padding-bottom: 8px; }
+
+    .file-card {
+      position: relative; display: flex; align-items: center;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 10px 14px; width: 220px;
+    }
+    .file-icon-box {
+      width: 36px; height: 36px; background: #ef4444; border-radius: 8px; /* The classic red square */
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; color: white; margin-right: 12px; flex-shrink: 0;
+    }
+    .file-details {
+      display: flex; flex-direction: column; overflow: hidden; width: 100%;
+    }
+    .file-name {
+      font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 14px;
+    }
+    .file-type {
+      font-family: var(--sans); font-size: 11px; color: var(--muted); margin-top: 2px;
+    }
+    .file-remove-btn {
+      position: absolute; top: 10px; right: 10px; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 50%; width: 20px; height: 20px;
+      font-size: 10px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; padding: 0;
+    }
+    .file-remove-btn:hover { background: var(--border); }
+    
+    .staging-close-btn { 
+      background: none; 
+      border: none; 
+      color: var(--muted); 
+      cursor: pointer; 
+      padding: 0; 
+      font-size: 14px; 
+      display: flex; 
+      align-items: center;
+    }
+    .staging-close-btn:hover { color: var(--danger); }
+
+    #current-session-title {
+      color: var(--accent);
+    }
+
+  </style>
 </head>
 <body>
 
-  <header>
-    <div class="header-content">
-      <div class="logo-icon">⚡</div>
-      <h1>HARDWARE COMPONENTS ASSISTANT</h1>
-    </div>
-  </header>
-
-  <div class="chat-container" id="chat">
-    <div class="msg-row system">
-      <div class="bubble">
-        <div class="bubble-header">System</div>
-        <p>Initialization complete. Ready to analyze new components.</p>
-        
-        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
-          <input type="file" id="file-input" accept="application/pdf" style="display:none" onchange="handleFileSelect(event)">
-          <div style="font-size: 32px; margin-bottom: 8px;">📥</div>
-          <p>Drag & drop a datasheet PDF here, or click to browse.</p>
-        </div>
-      </div>
+  <div id="view-auth">
+    <div class="auth-box">
+      <h2 id="auth-title">LOGIN</h2>
+      <input type="text" id="auth-user" class="auth-input" placeholder="Username" />
+      <input type="password" id="auth-pass" class="auth-input" placeholder="Password" />
+      <button class="btn" style="width: 100%;" id="auth-btn" onclick="handleAuth()">SIGN IN</button>
+      <p class="auth-toggle" id="auth-toggle" onclick="toggleAuthMode()">Don't have an account? Register here.</p>
+      <div id="auth-msg" style="color:var(--danger); margin-top:12px; font-size:12px; text-align:center;"></div>
     </div>
   </div>
 
-<script>
-const chat = document.getElementById('chat');
-const dropZone = document.getElementById('drop-zone');
+  <div id="view-app">
+    
+    <aside class="sidebar">
+      <div class="logo-area">
+        <div class="logo-icon">⚡</div>
+        <h1>SpecFlow</h1>
+      </div>
+      
+      <button class="btn btn-outline" style="width: 100%; margin-bottom: 8px;" onclick="createNewSession()">+ NEW WORKSPACE</button>
+      
+      <div class="session-list" id="session-list"></div>
 
-let extractedSpecs = {};
-let detectedType = "";
-const TOTAL_WEIGHT_BUDGET = 100;
+      <div class="user-controls">
+        <button class="logout-btn" onclick="logout()">LOGOUT</button>
+      </div>
+    </aside>
 
-// Helper to unpack nested JSON objects to prevent "[object Object]"
-function unpackValue(val) {
-  if (val === null || val === undefined) return "Not Found";
-  if (typeof val === 'object') {
-    return val.value || val.Value || val.text || JSON.stringify(val);
-  }
-  return String(val);
-}
+    <main class="main-workspace">
+      
+      <div class="workspace-header">
+        <div>
+          <div class="session-title" id="current-session-title">Select or create a workspace</div>
+          <div class="attached-pdfs" id="attached-pdfs-container"></div>
+        </div>
+      </div>
 
-// Drag & Drop
-dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
-dropZone.addEventListener('drop', (e) => {
-  e.preventDefault(); dropZone.classList.remove('dragover');
-  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) processFile(e.dataTransfer.files[0]);
-});
+      <div class="chat-container" id="chat-container"></div>
 
-function handleFileSelect(e) {
-  if (e.target.files.length > 0) processFile(e.target.files[0]);
-}
+      <div class="chat-input-wrapper">
+      <div class="chat-input-inner">
+        
+        <label class="file-upload-btn" title="Upload Datasheet">
+          <input type="file" id="pdf-upload" accept="application/pdf" style="display:none;" onchange="uploadAttachedPdf(event)" multiple>
+          📎
+        </label>
 
-function appendMessage(sender, content, id="") {
-  const row = document.createElement('div');
-  row.className = `msg-row ${sender}`;
-  if(id) row.id = id;
-  
-  const header = sender === 'system' ? 'System' : 'Engineer';
-  row.innerHTML = `<div class="bubble"><div class="bubble-header">${header}</div><div class="bubble-content">${content}</div></div>`;
-  chat.appendChild(row);
-  chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
-  return row;
-}
+        <div class="input-stack">
+          <div id="quote-preview" class="quote-preview">
+            <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
+              <span style="color:var(--muted); font-size: 14px;">↳</span>
+              <span id="quote-preview-text" class="quote-preview-text"></span>
+            </div>
+            <button class="quote-close-btn" onclick="clearQuote()" title="Remove quote">✕</button>
+          </div>
+          
+          <div id="file-staging-area" class="file-staging-area"></div>
 
-function showTyping() {
-  return appendMessage('system', `<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`, 'typing-indicator');
-}
+          <input type="text" id="chat-input" class="chat-input" placeholder="Ask a question or type 'find alternatives'..." onkeypress="if(event.key === 'Enter') sendQuestion()">
+        </div>
 
-function removeTyping() {
-  const indicator = document.getElementById('typing-indicator');
-  if (indicator) indicator.remove();
-}
+        <button class="btn" id="send-btn" onclick="sendQuestion()" disabled>SEND</button>
 
-async function processFile(file) {
-  dropZone.style.display = 'none';
-  appendMessage('user', `📄 Uploaded: <strong>${file.name}</strong>`);
-  showTyping();
+      </div>
+    </div>
 
-  const formData = new FormData();
-  formData.append("file", file);
+    </main>
+  </div>
 
-  try {
-    const response = await fetch("/api/upload", { method: "POST", body: formData });
-    const data = await response.json();
-    removeTyping();
+  <div id="selection-tooltip" onmousedown="event.preventDefault(); triggerQueryFurther();">🔍 Ask about this</div>
 
-    if (data.error) {
-      appendMessage('system', `<span style="color:var(--danger)">Error: ${data.error}</span>`);
-      dropZone.style.display = 'block'; 
-      return;
+  <script>
+    // --- STATE ---
+    let currentUser = localStorage.getItem("userId");
+    let currentSessionId = null;
+    let chatHistory = [];
+    let isRegisterMode = false;
+
+    // Interactive Math State (Global per chat interaction)
+    let extractedSpecs = {};
+    let detectedType = "";
+    let activeFeatures = [];
+    let inactiveFeatures = [];
+    let currentWeightValues = {};
+    let latestFilename = ""; // To track the file we are analyzing
+    const TOTAL_WEIGHT_BUDGET = 100;
+
+    // --- INIT ---
+    if (currentUser && sessionStorage.getItem('loggedIn')) showApp();
+    else showAuth();
+
+    function showAuth() { document.getElementById('view-auth').style.display = 'flex'; document.getElementById('view-app').style.display = 'none'; }
+    function showApp() { document.getElementById('view-auth').style.display = 'none'; document.getElementById('view-app').style.display = 'flex'; loadSidebarSessions(); }
+
+    // --- AUTHENTICATION ---
+    function toggleAuthMode() {
+      isRegisterMode = !isRegisterMode;
+      document.getElementById('auth-title').innerText = isRegisterMode ? "REGISTER" : "LOGIN";
+      document.getElementById('auth-btn').innerText = isRegisterMode ? "CREATE ACCOUNT" : "SIGN IN";
+      document.getElementById('auth-toggle').innerText = isRegisterMode ? "Already have an account? Login here." : "Don't have an account? Register here.";
+      document.getElementById('auth-msg').innerText = "";
     }
 
-    extractedSpecs = data.specs;
-    detectedType = data.detected_type;
-    promptForWeights();
+    async function handleAuth() {
+      const u = document.getElementById('auth-user').value; const p = document.getElementById('auth-pass').value;
+      const endpoint = isRegisterMode ? '/api/register' : '/api/login';
+      const res = await fetch(endpoint, { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({username: u, password: p}) });
+      const data = await res.json();
+      if (data.error) { document.getElementById('auth-msg').innerText = data.error; } 
+      else {
+        if (isRegisterMode) { toggleAuthMode(); document.getElementById('auth-msg').innerText = "Registration successful. Please login."; document.getElementById('auth-msg').style.color = "var(--accent)"; } 
+        else { localStorage.setItem("userId", data.user_id); sessionStorage.setItem('loggedIn', 'true'); currentUser = data.user_id; showApp(); }
+      }
+    }
 
-  } catch (err) {
-    removeTyping();
-    appendMessage('system', `<span style="color:var(--danger)">Server connection failed. Make sure backend is running.</span>`);
-    dropZone.style.display = 'block';
-  }
-}
+    function logout() { localStorage.removeItem("userId"); sessionStorage.removeItem('loggedIn'); currentUser = null; currentSessionId = null; showAuth(); }
 
-function promptForWeights() {
-  let sliderHTML = `<p>Detected Component: <strong style="color:var(--accent)">${detectedType}</strong></p>`;
-  sliderHTML += `<p style="font-size:13px; color:var(--muted); margin-top:8px;">Assign importance weights from a shared 100% budget. If one feature gets 20%, only 80% remains for the rest.</p>`;
-  
-  sliderHTML += `<div class="weight-panel">`;
-  sliderHTML += `
-    <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-family:var(--mono); font-size:12px;">
-      <span>Allocated: <strong id="allocated-weight" style="color:var(--warn)">0%</strong></span>
-      <span>Remaining: <strong id="remaining-weight" style="color:var(--accent)">100%</strong></span>
-    </div>
-  `;
+    // --- SESSION MANAGEMENT ---
+    async function loadSidebarSessions() {
+      const res = await fetch(`/api/user/${currentUser}/sessions`);
+      const data = await res.json();
+      const list = document.getElementById('session-list');
+      list.innerHTML = "";
+      
+      if (data.sessions && data.sessions.length > 0) {
+        data.sessions.forEach(s => {
+          const div = document.createElement('div');
+          div.id = `tile-${s.session_id}`; // Gives the tile a unique ID
+          div.className = `session-item ${s.session_id === currentSessionId ? 'active' : ''}`;
+          
+          const pinHtml = s.is_pinned ? `<span class="pin-icon">📌</span>` : '';
+          const pinActionText = s.is_pinned ? 'Unpin' : 'Pin';
+          
+          div.innerHTML = `
+            <span class="session-title-text" onclick="loadSessionData('${s.session_id}', '${s.session_name}')">
+              ${pinHtml} ${s.session_name || "Workspace"}
+            </span>
+            <button class="kebab-btn" onclick="toggleMenu(event, '${s.session_id}')">⋮</button>
+            <div class="dropdown-menu" id="menu-${s.session_id}">
+              <button class="dropdown-btn" onclick="pinSession('${s.session_id}', event)">${pinActionText} <span style="font-size:10px">📌</span></button>
+              <button class="dropdown-btn" onclick="renameSession('${s.session_id}', '${s.session_name.replace(/'/g, "\\'")}', event)">Rename <span style="font-size:10px">✏️</span></button>
+              <button class="dropdown-btn delete" onclick="deleteSession('${s.session_id}', event)">Delete <span style="font-size:10px">🗑️</span></button>
+            </div>
+          `;
+          list.appendChild(div);
+        });
+      }
+    }
 
-  for (const [feature, rawValue] of Object.entries(extractedSpecs)) {
-    // Unpack [object Object] into clean strings
-    const displayVal = unpackValue(rawValue);
-    
-    if (displayVal === "Not Found" || displayVal === "null") continue;
-    
-    const cleanId = feature.replace(/\W+/g, '');
-    sliderHTML += `
-      <div class="weight-row">
-        <div class="spec-name">${feature}</div>
-        <div class="spec-val">${displayVal}</div>
-        <input type="range" min="0" max="100" value="0" id="w-${cleanId}" oninput="handleWeightChange(this)">
-        <div class="weight-val" id="v-${cleanId}">0%</div>
-      </div>
-    `;
-  }
-  sliderHTML += `</div>`;
-  sliderHTML += `<button class="btn" style="margin-top:20px; width: 100%;" onclick="submitWeights(this)">▶ RUN MATH ENGINE</button>`;
+    // --- SIDEBAR MENU LOGIC ---
+    function toggleMenu(event, sessionId) {
+      event.stopPropagation();
+      
+      // Close all other menus first
+      document.querySelectorAll('.dropdown-menu').forEach(menu => menu.classList.remove('show'));
+      
+      const menu = document.getElementById(`menu-${sessionId}`);
+      if (menu) {
+        // Calculate exactly where the button is on the screen
+        const rect = event.target.getBoundingClientRect();
+        
+        // Position the menu using fixed coordinates
+        menu.style.top = `${rect.bottom + 4}px`;
+        menu.style.left = `${rect.left - 80}px`; // Shifts left so it doesn't fall off screen
+        
+        menu.classList.add('show');
+      }
+    }
 
-  appendMessage('system', sliderHTML);
-  refreshWeightBudgetUI();
-}
-
-function getWeightSliders() {
-  return Array.from(document.querySelectorAll('input[type="range"][id^="w-"]'));
-}
-
-function getAllocatedWeight() {
-  return getWeightSliders().reduce((sum, slider) => sum + parseInt(slider.value || '0', 10), 0);
-}
-
-function refreshWeightBudgetUI() {
-  const sliders = getWeightSliders();
-  const total = getAllocatedWeight();
-  const remaining = Math.max(0, TOTAL_WEIGHT_BUDGET - total);
-
-  const allocatedEl = document.getElementById('allocated-weight');
-  const remainingEl = document.getElementById('remaining-weight');
-  if (allocatedEl) allocatedEl.innerText = `${total}%`;
-  if (remainingEl) remainingEl.innerText = `${remaining}%`;
-
-  sliders.forEach((slider) => {
-    const ownValue = parseInt(slider.value || '0', 10);
-    const maxForThis = Math.min(TOTAL_WEIGHT_BUDGET, ownValue + remaining);
-    slider.max = String(maxForThis);
-
-    const valueEl = document.getElementById(`v-${slider.id.slice(2)}`);
-    if (valueEl) valueEl.innerText = `${ownValue}%`;
-  });
-}
-
-function handleWeightChange(changedSlider) {
-  const value = parseInt(changedSlider.value || '0', 10);
-  const max = parseInt(changedSlider.max || '100', 10);
-  if (value > max) {
-    changedSlider.value = String(max);
-  }
-  refreshWeightBudgetUI();
-}
-
-async function submitWeights(btnElement) {
-  btnElement.disabled = true;
-  btnElement.innerText = "Processing...";
-
-  let customWeights = {};
-  for (const feature of Object.keys(extractedSpecs)) {
-    const cleanId = feature.replace(/\W+/g, '');
-    const slider = document.getElementById(`w-${cleanId}`);
-    if (slider) customWeights[feature] = parseInt(slider.value);
-  }
-
-  const totalAssigned = Object.values(customWeights).reduce((a, b) => a + b, 0);
-  if (totalAssigned > TOTAL_WEIGHT_BUDGET) {
-    appendMessage('system', `<span style="color:var(--danger)">Total weight cannot exceed ${TOTAL_WEIGHT_BUDGET}%.</span>`);
-    btnElement.disabled = false;
-    btnElement.innerText = "▶ RUN MATH ENGINE";
-    return;
-  }
-
-  appendMessage('user', `Executing market search with custom scoring weights...`);
-  showTyping();
-
-  try {
-    const response = await fetch("/api/rank", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        detected_type: detectedType,
-        extracted_specs: extractedSpecs,
-        weights: customWeights
-      })
+    // Close dropdowns if clicking anywhere else
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.dropdown-menu').forEach(menu => menu.classList.remove('show'));
     });
-    
-    const data = await response.json();
-    removeTyping();
-    renderFinalResults(data.results);
-    
-  } catch (err) {
-    removeTyping();
-    appendMessage('system', `<span style="color:var(--danger)">Ranking failed: ${err}</span>`);
-    btnElement.disabled = false;
-    btnElement.innerText = "▶ RUN MATH ENGINE";
-  }
-}
 
-function renderFinalResults(results) {
-  let resHTML = `<p>Analysis complete. Here are the top ${results.length} mathematical matches from the live market:</p>`;
-  
-  results.forEach((match, index) => {
-    let specHTML = "";
-    for (const [k, v] of Object.entries(match.specs)) {
-      const displayV = unpackValue(v);
-      specHTML += `<div class="spec-item"><span class="spec-label">${k}:</span> ${displayV}</div>`;
-    }
-    
-    // Product Page link
-    const dkLink = `https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(match.part_number)}`;
-    
-    // Safely look for Primary Datasheet URL from backend extraction
-    let rawDsLink = match.datasheet_url || (match.specs && (match.specs.PrimaryDatasheet || match.specs.DatasheetUrl));
-    
-    let dsButtonHTML;
-    if (rawDsLink && rawDsLink.startsWith("http")) {
-        dsButtonHTML = `<a href="${rawDsLink}" target="_blank" class="btn btn-outline">📄 DATASHEET</a>`;
-    } else {
-        // Fallback: Lead them directly to the product page where the datasheet lives
-        dsButtonHTML = `<a href="${dkLink}" target="_blank" class="btn btn-outline" title="View product page to download datasheet">📄 FIND DATASHEET</a>`;
+    // Auto-close dropdowns if the user scrolls the sidebar (standard UI behavior)
+    document.getElementById('session-list').addEventListener('scroll', () => {
+      document.querySelectorAll('.dropdown-menu').forEach(menu => menu.classList.remove('show'));
+    });
+
+    async function pinSession(sessionId, event) {
+      event.stopPropagation();
+      await fetch(`/api/sessions/${sessionId}/pin`, { method: "PATCH" });
+      loadSidebarSessions();
     }
 
-    resHTML += `
-      <div class="part-card">
-        <div class="part-card-header">
-          <div class="mpn">#${index + 1} - ${match.part_number}</div>
-          <div class="score-badge">${match.score}% MATCH</div>
-        </div>
-        <div class="spec-grid">
-          ${specHTML}
-        </div>
-        <div class="card-actions">
-          ${dsButtonHTML}
-          <a href="${dkLink}" target="_blank" class="btn btn-digikey">🛒 BUY ON DIGIKEY</a>
-        </div>
-      </div>
-    `;
-  });
+    async function deleteSession(sessionId, event) {
+      event.stopPropagation();
+      if (!confirm("Are you sure you want to permanently delete this workspace?")) return;
 
-  resHTML += `
-    <div style="margin-top: 24px; text-align: center;">
-      <button class="btn btn-outline" onclick="resetChat()">↻ START NEW SEARCH</button>
-    </div>
-  `;
+      const res = await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+      const data = await res.json();
+      
+      if (data.status === "success") {
+        if (currentSessionId === sessionId) {
+          currentSessionId = null;
+          document.getElementById('current-session-title').innerText = "Select or create a workspace";
+          document.getElementById('chat-container').innerHTML = "";
+          document.getElementById('attached-pdfs-container').innerHTML = "";
+          document.getElementById('chat-input').disabled = true;
+          document.getElementById('send-btn').disabled = true;
+        }
+        loadSidebarSessions();
+      }
+    }
 
-  appendMessage('system', resHTML);
-}
+    async function renameSession(sessionId, currentName, event) {
+      event.stopPropagation();
+      
+      // Prompt the user for the new name
+      const newName = prompt("Enter a new name for this workspace:", currentName);
+      
+      // If they hit cancel or didn't change it, do nothing
+      if (!newName || newName.trim() === "" || newName === currentName) return;
 
-function resetChat() {
-  location.reload(); 
-}
-</script>
-</body>
+      const res = await fetch(`/api/sessions/${sessionId}/rename`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_name: newName.trim() })
+      });
+      const data = await res.json();
+      
+      if (data.status === "success") {
+        // If the chat we renamed is currently open, update the top header instantly
+        if (currentSessionId === sessionId) {
+          document.getElementById('current-session-title').innerText = newName.trim();
+        }
+        // Refresh the sidebar to show the new name
+        loadSidebarSessions();
+      } else {
+        alert("Failed to rename workspace.");
+      }
+    }
+
+    // --- GPT-STYLE TEXT HIGHLIGHT LOGIC ---
+    let selectedText = "";
+    // --- TOOLTIP LOGIC ---
+    document.addEventListener("mouseup", function(event) {
+      const tooltip = document.getElementById("selection-tooltip");
+      
+      // 1. SAFETY CHECK: Only allow highlighting inside the chat area!
+      // If they highlight text on the login screen, sidebar, or inputs, ignore it.
+      if (!event.target.closest('#chat-container')) {
+        tooltip.style.display = "none";
+        return;
+      }
+
+      // 2. Get the highlighted text
+      selectedText = window.getSelection().toString().trim();
+
+      // 3. Show or hide the tooltip based on selection
+      if (selectedText.length > 0) {
+        // Position the tooltip slightly above the mouse cursor
+        tooltip.style.left = event.pageX + "px";
+        tooltip.style.top = (event.pageY - 40) + "px";
+        tooltip.style.display = "block";
+      } else {
+        tooltip.style.display = "none";
+      }
+    });
+
+    // Hide tooltip when they start clicking/dragging elsewhere
+    document.addEventListener("mousedown", function(event) {
+      if (event.target.id !== "selection-tooltip") {
+        document.getElementById("selection-tooltip").style.display = "none";
+      }
+    });
+
+    let activeQuote = "";
+
+    function clearQuote() {
+      activeQuote = "";
+      document.getElementById('quote-preview').style.display = 'none';
+      document.getElementById('chat-input').focus();
+    }
+
+    function triggerQueryFurther() {
+      if (!selectedText || !currentSessionId) return;
+      
+      activeQuote = selectedText;
+      document.getElementById('quote-preview-text').innerText = `"${selectedText}"`;
+      document.getElementById('quote-preview').style.display = 'flex';
+      
+      document.getElementById("selection-tooltip").style.display = "none";
+      document.getElementById('chat-input').focus();
+      window.getSelection().removeAllRanges(); 
+    }
+
+    async function createNewSession() {
+      const name = prompt("Enter a name for this workspace:", "New Project");
+      if (!name) return;
+      const res = await fetch("/api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: currentUser, session_name: name }) });
+      const data = await res.json();
+      if (data.session_id) { await loadSidebarSessions(); loadSessionData(data.session_id, name); }
+    }
+
+    async function loadSessionData(sessionId, sessionName) {
+      currentSessionId = sessionId;
+      document.getElementById('current-session-title').innerText = sessionName;
+      document.getElementById('chat-input').disabled = false; 
+      document.getElementById('send-btn').disabled = false;
+      
+      // Remove active class from all tiles
+      Array.from(document.getElementById('session-list').children).forEach(el => el.classList.remove('active'));
+
+      // Find the exact tile by its unique ID and highlight it
+      const activeItem = document.getElementById(`tile-${sessionId}`);
+      if (activeItem) {
+          activeItem.classList.add('active');
+      }
+
+      const res = await fetch(`/api/sessions/${sessionId}`);
+      const data = await res.json();  
+
+      // Clear out the top header
+      const pdfContainer = document.getElementById('attached-pdfs-container');
+      pdfContainer.innerHTML = "";
+      
+      if (data.attached_pdfs) {
+        // Use a Set to filter out duplicate database entries instantly
+        const seenFiles = new Set();
+        
+        data.attached_pdfs.forEach(pdf => { 
+          if (!seenFiles.has(pdf.filename)) {
+            seenFiles.add(pdf.filename);
+            pdfContainer.innerHTML += `<a href="/api/datasheets/${encodeURIComponent(pdf.filename)}" target="_blank" class="pdf-pill" title="Click to view PDF">📄 ${pdf.filename}</a>`; 
+          }
+        });
+      }
+      
+      const chatContainer = document.getElementById('chat-container');
+      chatContainer.innerHTML = "";
+      chatHistory = data.messages || [];
+      
+      if (chatHistory.length === 0) {
+          appendSystemMessage("Workspace initialized. Attach a PDF or start typing.");
+      } else {
+          chatHistory.forEach(msg => { 
+              if (msg.role === 'user') appendUserMessage(msg.content); 
+              else appendSystemMessage(msg.content); 
+          });
+      }
+    }
+
+    // --- UPLOAD TO SESSION ---
+    async function uploadAttachedPdf(eventOrFiles) {
+      if (!currentSessionId) return alert("Select or create a workspace first!");
+      
+      const files = eventOrFiles.target ? eventOrFiles.target.files : eventOrFiles;
+      if (!files || files.length === 0) return;
+
+      const stagingArea = document.getElementById('file-staging-area');
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type !== "application/pdf") continue;
+
+        latestFilename = file.name;
+        
+        // 1. Create the ChatGPT-style card
+        const fileId = "file-" + Date.now() + "-" + i;
+        const card = document.createElement('div');
+        card.className = 'file-card loading';
+        card.id = fileId;
+        card.innerHTML = `
+          <div class="file-icon-box">
+            <span class="status-icon">⏳</span>
+          </div>
+          <div class="file-details">
+            <span class="file-name">${file.name}</span>
+            <span class="file-type">PDF</span>
+          </div>
+          <button class="file-remove-btn" onclick="this.parentElement.remove()" title="Remove file">✕</button>
+        `;
+        stagingArea.appendChild(card);
+
+        // 2. Upload to backend invisibly
+        const fd = new FormData();
+        fd.append("file", file); 
+        fd.append("user_id", currentUser); 
+        fd.append("session_id", currentSessionId);
+
+        try {
+          const res = await fetch("/api/upload", { method: "POST", body: fd });
+          const data = await res.json();
+          
+          if (data.error) {
+            card.className = 'file-card error';
+            card.querySelector('.status-icon').innerText = '❌';
+            card.title = data.error;
+          } else {
+            card.className = 'file-card success';
+            card.querySelector('.status-icon').innerText = '📄';
+            // Notice: We NO LONGER instantly push it to the top bar here!
+          }
+        } catch (err) { 
+          card.className = 'file-card error';
+          card.querySelector('.status-icon').innerText = '❌';
+        }
+      }
+      
+      if (eventOrFiles.target) eventOrFiles.target.value = "";
+    }
+
+    // --- DRAG AND DROP LOGIC ---
+    const dropZone = document.querySelector('.main-workspace');
+
+    // Prevent default browser behavior (opening the PDF full screen)
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
+    });
+
+    // Add visual cue when dragging over
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
+    });
+
+    // Remove visual cue when mouse leaves or drops
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
+    });
+
+    // Handle the actual drop
+    dropZone.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      // Send the dropped files directly to our upgraded upload function
+      uploadAttachedPdf(files);
+    }, false);
+
+    // --- CHAT & AGENT ROUTER ---
+    function appendUserMessage(text) {
+      const chatContainer = document.getElementById('chat-container');
+      chatContainer.innerHTML += `
+        <div class="msg-row user">
+          <div class="bubble">
+            <div class="bubble-content">${text}</div>
+          </div>
+        </div>`;
+      chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+    }
+
+    function appendSystemMessage(htmlContent) {
+      const chatContainer = document.getElementById('chat-container');
+      
+      // Parse markdown and add citation badges
+      let formatted = marked.parse(String(htmlContent));
+      formatted = formatted.replace(/\[(\w+)\]/g, '<span class="citation-badge">📄 $1</span>');
+      
+      chatContainer.innerHTML += `
+        <div class="msg-row system">
+          <div class="bubble">
+            <div class="bubble-content">${formatted}</div>
+          </div>
+        </div>`;
+      chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+    }
+
+    function appendRawHTML(htmlContent) {
+      const chatContainer = document.getElementById('chat-container');
+      chatContainer.innerHTML += `
+        <div class="msg-row system">
+          <div class="bubble" style="background:transparent; border:none; padding:0;">
+            <div class="bubble-content">${htmlContent}</div>
+          </div>
+        </div>`;
+      chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+    }
+
+async function sendQuestion() {
+      if (!currentSessionId) return;
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      
+      const stagingArea = document.getElementById('file-staging-area');
+      const hasStagedFiles = stagingArea.querySelectorAll('.file-card.success').length > 0;
+      
+      // Allow sending if there is text OR an active quote OR staged files waiting to be sent
+      if (!text && !activeQuote && !hasStagedFiles) return;
+
+      let fullMessage = text;
+      let displayMessage = text;
+
+      // If no text was typed but a file is being sent, inject a default message
+      if (!text && !activeQuote && hasStagedFiles) {
+        fullMessage = "I have attached a new datasheet. Please analyze it and find alternatives.";
+        displayMessage = "I have attached a new datasheet.";
+      }
+
+      // If a quote is attached, format it for the UI and the LLM Backend
+      if (activeQuote) {
+        fullMessage = `Context: "${activeQuote}"\n\nQuestion: ${text}`;
+        displayMessage = `
+          <div style="background: var(--surface); border-left: 3px solid var(--accent2); padding: 8px 12px; margin-bottom: 8px; border-radius: 4px; font-size: 12px; color: var(--muted); font-style: italic;">
+            "${activeQuote}"
+          </div>
+          <div>${text}</div>
+        `;
+        clearQuote();
+      }
+
+      input.value = ""; 
+      
+      // ADDED HERE: Clear out the uploaded file previews from the input stack on send
+      // Move all staged files to the top header permanently BEFORE clearing the input box
+      const topContainer = document.getElementById('attached-pdfs-container');
+      
+      stagingArea.querySelectorAll('.file-card.success .file-name').forEach(el => {
+        const fileName = el.innerText;
+        const isDuplicate = Array.from(topContainer.children).some(child => child.innerText.includes(fileName));
+        if (!isDuplicate) {
+          topContainer.innerHTML += `<a href="/api/datasheets/${encodeURIComponent(fileName)}" target="_blank" class="pdf-pill" title="Click to view PDF">📄 ${fileName}</a>`;
+        }
+      });
+
+      // Now clear the staging area
+      stagingArea.innerHTML = "";
+
+      appendUserMessage(displayMessage);
+
+      const loadingId = "loading-" + Date.now();
+      document.getElementById('chat-container').innerHTML += `<div class="msg-row system" id="${loadingId}"><div class="bubble"><div class="bubble-content" style="color:var(--muted)">Thinking...</div></div></div>`;
+      document.getElementById('chat-container').scrollTo({ top: document.getElementById('chat-container').scrollHeight });
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          // Send the full packaged message (Quote + Text) to the backend!
+          body: JSON.stringify({ question: fullMessage, filename: latestFilename, user_id: currentUser, session_id: currentSessionId, is_global: true, chat_history: chatHistory })
+        });
+        
+        const data = await res.json();
+        document.getElementById(loadingId).remove();
+
+        if (data.error) { appendSystemMessage(`<span style="color:var(--danger)">Error: ${data.error}</span>`); return; }
+
+        chatHistory.push({ "role": "user", "content": text });
+
+        // AGENT ROUTER LOGIC
+        if (data.type === "interactive_ranking") {
+          extractedSpecs = data.extracted_specs;
+          detectedType = data.detected_type;
+          promptForWeightsInChat(data.answer); 
+          chatHistory.push({ "role": "assistant", "content": "(Rendered interactive market math widget)" });
+        } else {
+          appendSystemMessage(data.answer);
+          chatHistory.push({ "role": "assistant", "content": data.answer });
+        }
+
+        // Save memory to backend
+        await fetch("/api/sessions/save_messages", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: currentSessionId, new_messages: [
+            { "role": "user", "content": text },
+            { "role": "assistant", "content": chatHistory[chatHistory.length-1].content }
+          ]})
+        });
+      } catch (err) {
+        document.getElementById(loadingId).remove();
+        appendSystemMessage(`<span style="color:var(--danger)">Chat failed.</span>`);
+      }
+    }
+    // --- INTERACTIVE MATH WIDGETS ---
+    function unpackValue(val) {
+      if (val === null || val === undefined) return "Not Found";
+      if (typeof val === 'object') return val.value || val.Value || val.text || JSON.stringify(val);
+      return String(val);
+    }
+
+    function promptForWeightsInChat(introText) {
+      let validFeatures = [];
+      for (const [feature, rawValue] of Object.entries(extractedSpecs)) {
+        const displayVal = unpackValue(rawValue);
+        if (displayVal !== "Not Found" && displayVal !== "null") validFeatures.push(feature);
+      }
+
+      const numToSelect = Math.ceil(validFeatures.length / 2);
+      activeFeatures = validFeatures.slice(0, numToSelect);
+      inactiveFeatures = validFeatures.slice(numToSelect);
+      currentWeightValues = {}; 
+
+      let html = `<p>${introText}</p>`;
+      html += `<p style="margin-top:12px;">Component Class: <strong style="color:var(--accent)">${detectedType}</strong></p>`;
+      html += `<div id="active-weight-panel-container"></div>`;
+      html += `<button class="btn" style="margin-top:20px;" onclick="submitWeights(this)">▶ RUN MARKET MATH ENGINE</button>`;
+      
+      appendSystemMessage(html);
+      renderWeightPanel();
+    }
+
+    function saveCurrentWeights() {
+      activeFeatures.forEach(feature => {
+        const cleanId = feature.replace(/\W+/g, '');
+        const el = document.getElementById(`w-${cleanId}`);
+        if (el) currentWeightValues[feature] = parseInt(el.value || '0', 10);
+      });
+    }
+
+    function removeFeature(featureName) { saveCurrentWeights(); activeFeatures = activeFeatures.filter(f => f !== featureName); inactiveFeatures.push(featureName); currentWeightValues[featureName] = 0; renderWeightPanel(); }
+    function addFeature() { const selectEl = document.getElementById('add-feature-select'); if (!selectEl || !selectEl.value) return; const featureName = selectEl.value; saveCurrentWeights(); inactiveFeatures = inactiveFeatures.filter(f => f !== featureName); activeFeatures.push(featureName); if (!(featureName in currentWeightValues)) currentWeightValues[featureName] = 0; renderWeightPanel(); }
+
+    function renderWeightPanel() {
+      const container = document.getElementById('active-weight-panel-container');
+      if (!container) return;
+
+      let html = `<div class="weight-panel">
+        <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-family:var(--mono); font-size:12px;">
+          <span>Allocated: <strong id="allocated-weight" style="color:var(--warn)">0%</strong></span>
+          <span>Remaining: <strong id="remaining-weight" style="color:var(--accent)">100%</strong></span>
+        </div>`;
+
+      activeFeatures.forEach(feature => {
+        const displayVal = unpackValue(extractedSpecs[feature]);
+        const cleanId = feature.replace(/\W+/g, '');
+        const val = currentWeightValues[feature] || 0;
+        html += `
+          <div class="weight-row">
+            <div class="spec-name">${feature}</div>
+            <div class="spec-val">${displayVal}</div>
+            <input type="range" min="0" max="100" value="${val}" id="w-${cleanId}" oninput="handleWeightChange(this)">
+            <div class="weight-val" id="v-${cleanId}">${val}%</div>
+            <button class="btn-remove" onclick="removeFeature('${feature}')" title="Remove">−</button>
+          </div>`;
+      });
+
+      if (inactiveFeatures.length > 0) {
+        html += `
+          <div class="add-feature-bar">
+            <select id="add-feature-select">${inactiveFeatures.map(f => `<option value="${f}">${f}</option>`).join('')}</select>
+            <button class="btn-add" onclick="addFeature()" title="Add Feature">+</button>
+          </div>`;
+      }
+
+      html += `</div>`;
+      container.innerHTML = html;
+      
+      activeFeatures.forEach(feature => { const el = document.getElementById(`w-${feature.replace(/\W+/g, '')}`); if (el) handleWeightChange(el, false); });
+      refreshWeightBudgetUI();
+    }
+
+    function getWeightSliders() { return Array.from(document.getElementById('active-weight-panel-container')?.querySelectorAll('input[type="range"][id^="w-"]') || []); }
+    function getAllocatedWeight() { return getWeightSliders().reduce((s, el) => s + parseInt(el.value || '0', 10), 0); }
+    function refreshWeightBudgetUI() {
+      const total = getAllocatedWeight(); const remaining = Math.max(0, TOTAL_WEIGHT_BUDGET - total);
+      const allocEl = document.getElementById('allocated-weight'); const remEl = document.getElementById('remaining-weight');
+      if (allocEl) allocEl.innerText = `${total}%`; if (remEl) remEl.innerText = `${remaining}%`;
+      getWeightSliders().forEach(slider => {
+        const ownVal = parseInt(slider.value || '0', 10); slider.max = String(Math.min(TOTAL_WEIGHT_BUDGET, ownVal + remaining));
+        const valEl = document.getElementById(`v-${slider.id.slice(2)}`); if (valEl) valEl.innerText = `${ownVal}%`;
+      });
+    }
+
+    function handleWeightChange(slider) {
+      const v = parseInt(slider.value||'0',10); const m = parseInt(slider.max||'100',10);
+      if(v > m) slider.value = String(m);
+      refreshWeightBudgetUI();
+    }
+
+    async function submitWeights(btn) {
+      btn.disabled = true; btn.innerText = "Processing...";
+      let weights = {};
+      for (const feature of Object.keys(extractedSpecs)) {
+        const el = document.getElementById(`w-${feature.replace(/\W+/g, '')}`);
+        if(el) weights[feature] = parseInt(el.value);
+      }
+
+      const loadingId = "loading-math-" + Date.now();
+      document.getElementById('chat-container').innerHTML += `<div class="msg-row system" id="${loadingId}"><div class="bubble"><div class="bubble-content" style="color:var(--muted)">Crunching mathematical distances...</div></div></div>`;
+      document.getElementById('chat-container').scrollTo({ top: document.getElementById('chat-container').scrollHeight });
+
+      try {
+        const res = await fetch("/api/rank", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ detected_type: detectedType, extracted_specs: extractedSpecs, weights: weights })
+        });
+        const data = await res.json();
+        document.getElementById(loadingId).remove();
+        
+        // Remove the 'active' ID so future widgets don't clash
+        const oldPanel = document.getElementById('active-weight-panel-container');
+        if (oldPanel) oldPanel.removeAttribute('id');
+
+        const containerId = 'res-' + Date.now();
+        let resHTML = `<p><strong>Market Alternatives Computed:</strong></p>`;
+        
+        resHTML += `
+          <div id="sort-controls-${containerId}" style="display:none; margin-bottom:16px; gap:10px; align-items:center;">
+            <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">Sort by:</span>
+            <button class="sort-btn" onclick="sortCards('${containerId}', 'price')" title="Lowest to Highest Price">💰 Price ↑</button>
+            <button class="sort-btn" onclick="sortCards('${containerId}', 'stock')" title="Highest to Lowest Stock">📦 Stock ↓</button>
+          </div>
+          <div id="${containerId}" style="display:flex; flex-direction:column; gap:16px;">
+        `;
+
+        data.results.forEach((match, idx) => {
+          let specHTML = "";
+          for (const [k, v] of Object.entries(match.specs)) { specHTML += `<div class="spec-item"><span style="color:var(--muted)">${k}:</span> ${unpackValue(v)}</div>`; }
+          resHTML += `
+            <div class="part-card" style="margin-top:0;" data-score="${match.score}" data-price="Infinity" data-stock="-1" id="card-${containerId}-${match.part_number}">
+              <div class="part-card-header">
+                <div class="mpn">#${idx + 1} - ${match.part_number}</div>
+                <div class="score-badge">${match.score}% MATCH</div>
+              </div>
+              <div class="pricing-row" id="pricing-${containerId}-${match.part_number}">
+                <span class="pricing-loading">⏳ Fetching live pricing...</span>
+              </div>
+              <div class="spec-grid">${specHTML}</div>
+              <div class="card-actions">
+                <a class="btn-datasheet" id="ds-${containerId}-${match.part_number}" href="https://www.google.com/search?q=${encodeURIComponent(match.part_number + ' datasheet filetype:pdf')}" target="_blank">📋 FIND DATASHEET</a>
+                <a class="btn-buy" id="buy-${containerId}-${match.part_number}" href="https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(match.part_number)}" target="_blank">🛒 BUY</a>
+              </div>
+            </div>`;
+        });
+        resHTML += `</div>`;
+        
+        appendRawHTML(resHTML);
+        fetchLivePricing(data.results, containerId);
+
+      } catch (err) {
+        document.getElementById(loadingId).remove();
+        appendRawHTML(`<span style="color:var(--danger)">Math Engine failed.</span>`);
+      }
+      btn.style.display = 'none'; // Hide button after successful run
+    }
+
+    async function fetchLivePricing(results, containerId) {
+      const partNumbers = results.map(r => r.part_number);
+      try {
+        const res = await fetch("/api/pricing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ part_numbers: partNumbers }) });
+        const data = await res.json();
+        const pricing = data.pricing || {};
+
+        results.forEach((match) => {
+          const el = document.getElementById(`pricing-${containerId}-${match.part_number}`);
+          if (!el) return;
+
+          const info = pricing[match.part_number];
+          const cardEl = document.getElementById(`card-${containerId}-${match.part_number}`);
+
+          if (!info || info.error) {
+            el.innerHTML = `<span class="pricing-badge badge-price">💰 Price: N/A</span><span class="pricing-badge badge-stock no-stock">📦 Stock: N/A</span>`; return;
+          }
+
+          if (cardEl) {
+            cardEl.setAttribute('data-price', info.price !== null ? info.price : Infinity);
+            cardEl.setAttribute('data-stock', info.stock !== null && info.stock !== undefined ? info.stock : -1);
+          }
+
+          const priceStr = info.price !== null ? `$${Number(info.price).toFixed(2)}` : 'N/A';
+          const stock = info.stock;
+          let stockClass = 'in-stock', stockLabel = '';
+          if (stock === null || stock === undefined) { stockClass = 'no-stock'; stockLabel = 'N/A'; }
+          else if (stock === 0) { stockClass = 'no-stock'; stockLabel = 'Out of Stock'; }
+          else if (stock < 100) { stockClass = 'low-stock'; stockLabel = `${stock.toLocaleString()} units`; }
+          else { stockClass = 'in-stock'; stockLabel = `${stock.toLocaleString()} units`; }
+
+          el.innerHTML = `<span class="pricing-badge badge-price">💰 ${priceStr}</span><span class="pricing-badge badge-stock ${stockClass}">📦 ${stockLabel}</span>`;
+
+          if (info.datasheet_url) document.getElementById(`ds-${containerId}-${match.part_number}`).href = info.datasheet_url;
+          if (info.digikey_url) document.getElementById(`buy-${containerId}-${match.part_number}`).href = info.digikey_url;
+        });
+        
+        const controls = document.getElementById(`sort-controls-${containerId}`);
+        if (controls) controls.style.display = 'flex';
+
+      } catch (err) {
+        results.forEach(match => { const el = document.getElementById(`pricing-${containerId}-${match.part_number}`); if (el) el.innerHTML = `<span class="pricing-loading">⚠️ Pricing unavailable</span>`; });
+      }
+    }
+
+    function sortCards(containerId, criterion) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const cards = Array.from(container.querySelectorAll('.part-card'));
+      
+      cards.sort((a, b) => {
+        if (criterion === 'price') {
+          const pa = parseFloat(a.getAttribute('data-price'));
+          const pb = parseFloat(b.getAttribute('data-price'));
+          return pa - pb; // Ascending (cheapest first)
+        } else if (criterion === 'stock') {
+          const sa = parseInt(a.getAttribute('data-stock'), 10);
+          const sb = parseInt(b.getAttribute('data-stock'), 10);
+          return sb - sa; // Descending (most stock first)
+        } else {
+          // Default: score
+          const sa = parseFloat(a.getAttribute('data-score'));
+          const sb = parseFloat(b.getAttribute('data-score'));
+          return sb - sa; // Descending
+        }
+      });
+      
+      // Re-append in new order
+      cards.forEach(card => container.appendChild(card));
+    }
+
+    // --- THE ULTIMATE DRAG SHIELD LOGIC ---
+    
+    // 1. Create a massive invisible shield that covers the entire screen
+    const dragShield = document.createElement('div');
+    dragShield.id = "drag-shield";
+    dragShield.style.position = 'fixed';
+    dragShield.style.top = '0';
+    dragShield.style.left = '0';
+    dragShield.style.width = '100vw';
+    dragShield.style.height = '100vh';
+    dragShield.style.zIndex = '999999'; // Sits above literally everything
+    dragShield.style.display = 'none';  // Hidden by default
+    dragShield.style.backgroundColor = 'rgba(0, 229, 176, 0.05)'; // Faint teal tint
+    dragShield.style.boxSizing = 'border-box';
+    dragShield.style.border = '4px dashed var(--accent)';
+    document.body.appendChild(dragShield);
+
+    // 2. Prevent default browser behavior globally so it NEVER opens the PDF
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      document.addEventListener(eventName, (e) => { 
+        e.preventDefault(); 
+        e.stopPropagation(); 
+      }, false);
+    });
+
+    // 3. When a file enters the window, activate the shield!
+    document.addEventListener('dragenter', (e) => {
+      if (e.dataTransfer.types.includes('Files')) {
+        dragShield.style.display = 'block';
+      }
+    });
+
+    // 4. If they drag the file back out of the browser window, hide the shield
+    dragShield.addEventListener('dragleave', (e) => {
+      dragShield.style.display = 'none';
+    });
+
+    // 5. When they drop the file ON the shield, upload and hide the shield
+    dragShield.addEventListener('drop', (e) => {
+      dragShield.style.display = 'none';
+      const files = e.dataTransfer.files;
+      
+      // Send the dropped files directly to our uploader
+      if (files && files.length > 0) {
+        uploadAttachedPdf(files);
+      }
+    });
+  </script>
+</body> 
 </html>
