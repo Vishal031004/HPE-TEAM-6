@@ -214,6 +214,9 @@
     .btn-buy { background: var(--danger); border: 1px solid var(--danger); color: #fff; }
     .btn-buy:hover { opacity: 0.85; }
 
+    .sort-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-family: var(--mono); font-size: 12px; padding: 6px 14px; border-radius: 6px; cursor: pointer; transition: background 0.2s, border-color 0.2s, color 0.2s; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+    .sort-btn:hover { background: var(--surface); border-color: var(--accent); color: var(--accent); }
+
     /* Sidebar Kebab Menu & Pinning */
     .session-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; position: relative; }
     .session-title-text { flex: 1; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
@@ -790,16 +793,36 @@
       chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
     }
 
+    function appendRawHTML(htmlContent) {
+      const chatContainer = document.getElementById('chat-container');
+      chatContainer.innerHTML += `
+        <div class="msg-row system">
+          <div class="bubble" style="background:transparent; border:none; padding:0;">
+            <div class="bubble-content">${htmlContent}</div>
+          </div>
+        </div>`;
+      chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+    }
+
 async function sendQuestion() {
       if (!currentSessionId) return;
       const input = document.getElementById('chat-input');
       const text = input.value.trim();
       
-      // Allow sending if there is text OR an active quote
-      if (!text && !activeQuote) return;
+      const stagingArea = document.getElementById('file-staging-area');
+      const hasStagedFiles = stagingArea.querySelectorAll('.file-card.success').length > 0;
+      
+      // Allow sending if there is text OR an active quote OR staged files waiting to be sent
+      if (!text && !activeQuote && !hasStagedFiles) return;
 
       let fullMessage = text;
       let displayMessage = text;
+
+      // If no text was typed but a file is being sent, inject a default message
+      if (!text && !activeQuote && hasStagedFiles) {
+        fullMessage = "I have attached a new datasheet. Please analyze it and find alternatives.";
+        displayMessage = "I have attached a new datasheet.";
+      }
 
       // If a quote is attached, format it for the UI and the LLM Backend
       if (activeQuote) {
@@ -817,7 +840,6 @@ async function sendQuestion() {
       
       // ADDED HERE: Clear out the uploaded file previews from the input stack on send
       // Move all staged files to the top header permanently BEFORE clearing the input box
-      const stagingArea = document.getElementById('file-staging-area');
       const topContainer = document.getElementById('attached-pdfs-container');
       
       stagingArea.querySelectorAll('.file-card.success .file-name').forEach(el => {
@@ -995,38 +1017,50 @@ async function sendQuestion() {
         const oldPanel = document.getElementById('active-weight-panel-container');
         if (oldPanel) oldPanel.removeAttribute('id');
 
+        const containerId = 'res-' + Date.now();
         let resHTML = `<p><strong>Market Alternatives Computed:</strong></p>`;
+        
+        resHTML += `
+          <div id="sort-controls-${containerId}" style="display:none; margin-bottom:16px; gap:10px; align-items:center;">
+            <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">Sort by:</span>
+            <button class="sort-btn" onclick="sortCards('${containerId}', 'price')" title="Lowest to Highest Price">💰 Price ↑</button>
+            <button class="sort-btn" onclick="sortCards('${containerId}', 'stock')" title="Highest to Lowest Stock">📦 Stock ↓</button>
+          </div>
+          <div id="${containerId}" style="display:flex; flex-direction:column; gap:16px;">
+        `;
+
         data.results.forEach((match, idx) => {
           let specHTML = "";
           for (const [k, v] of Object.entries(match.specs)) { specHTML += `<div class="spec-item"><span style="color:var(--muted)">${k}:</span> ${unpackValue(v)}</div>`; }
           resHTML += `
-            <div class="part-card">
+            <div class="part-card" style="margin-top:0;" data-score="${match.score}" data-price="Infinity" data-stock="-1" id="card-${containerId}-${match.part_number}">
               <div class="part-card-header">
                 <div class="mpn">#${idx + 1} - ${match.part_number}</div>
                 <div class="score-badge">${match.score}% MATCH</div>
               </div>
-              <div class="pricing-row" id="pricing-${match.part_number}">
+              <div class="pricing-row" id="pricing-${containerId}-${match.part_number}">
                 <span class="pricing-loading">⏳ Fetching live pricing...</span>
               </div>
               <div class="spec-grid">${specHTML}</div>
               <div class="card-actions">
-                <a class="btn-datasheet" id="ds-${match.part_number}" href="https://www.google.com/search?q=${encodeURIComponent(match.part_number + ' datasheet filetype:pdf')}" target="_blank">📋 FIND DATASHEET</a>
-                <a class="btn-buy" id="buy-${match.part_number}" href="https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(match.part_number)}" target="_blank">🛒 BUY</a>
+                <a class="btn-datasheet" id="ds-${containerId}-${match.part_number}" href="https://www.google.com/search?q=${encodeURIComponent(match.part_number + ' datasheet filetype:pdf')}" target="_blank">📋 FIND DATASHEET</a>
+                <a class="btn-buy" id="buy-${containerId}-${match.part_number}" href="https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(match.part_number)}" target="_blank">🛒 BUY</a>
               </div>
             </div>`;
         });
+        resHTML += `</div>`;
         
-        appendSystemMessage(resHTML);
-        fetchLivePricing(data.results);
+        appendRawHTML(resHTML);
+        fetchLivePricing(data.results, containerId);
 
       } catch (err) {
         document.getElementById(loadingId).remove();
-        appendSystemMessage(`<span style="color:var(--danger)">Math Engine failed.</span>`);
+        appendRawHTML(`<span style="color:var(--danger)">Math Engine failed.</span>`);
       }
       btn.style.display = 'none'; // Hide button after successful run
     }
 
-    async function fetchLivePricing(results) {
+    async function fetchLivePricing(results, containerId) {
       const partNumbers = results.map(r => r.part_number);
       try {
         const res = await fetch("/api/pricing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ part_numbers: partNumbers }) });
@@ -1034,12 +1068,19 @@ async function sendQuestion() {
         const pricing = data.pricing || {};
 
         results.forEach((match) => {
-          const el = document.getElementById(`pricing-${match.part_number}`);
+          const el = document.getElementById(`pricing-${containerId}-${match.part_number}`);
           if (!el) return;
 
           const info = pricing[match.part_number];
+          const cardEl = document.getElementById(`card-${containerId}-${match.part_number}`);
+
           if (!info || info.error) {
             el.innerHTML = `<span class="pricing-badge badge-price">💰 Price: N/A</span><span class="pricing-badge badge-stock no-stock">📦 Stock: N/A</span>`; return;
+          }
+
+          if (cardEl) {
+            cardEl.setAttribute('data-price', info.price !== null ? info.price : Infinity);
+            cardEl.setAttribute('data-stock', info.stock !== null && info.stock !== undefined ? info.stock : -1);
           }
 
           const priceStr = info.price !== null ? `$${Number(info.price).toFixed(2)}` : 'N/A';
@@ -1052,12 +1093,42 @@ async function sendQuestion() {
 
           el.innerHTML = `<span class="pricing-badge badge-price">💰 ${priceStr}</span><span class="pricing-badge badge-stock ${stockClass}">📦 ${stockLabel}</span>`;
 
-          if (info.datasheet_url) document.getElementById(`ds-${match.part_number}`).href = info.datasheet_url;
-          if (info.digikey_url) document.getElementById(`buy-${match.part_number}`).href = info.digikey_url;
+          if (info.datasheet_url) document.getElementById(`ds-${containerId}-${match.part_number}`).href = info.datasheet_url;
+          if (info.digikey_url) document.getElementById(`buy-${containerId}-${match.part_number}`).href = info.digikey_url;
         });
+        
+        const controls = document.getElementById(`sort-controls-${containerId}`);
+        if (controls) controls.style.display = 'flex';
+
       } catch (err) {
-        results.forEach(match => { const el = document.getElementById(`pricing-${match.part_number}`); if (el) el.innerHTML = `<span class="pricing-loading">⚠️ Pricing unavailable</span>`; });
+        results.forEach(match => { const el = document.getElementById(`pricing-${containerId}-${match.part_number}`); if (el) el.innerHTML = `<span class="pricing-loading">⚠️ Pricing unavailable</span>`; });
       }
+    }
+
+    function sortCards(containerId, criterion) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const cards = Array.from(container.querySelectorAll('.part-card'));
+      
+      cards.sort((a, b) => {
+        if (criterion === 'price') {
+          const pa = parseFloat(a.getAttribute('data-price'));
+          const pb = parseFloat(b.getAttribute('data-price'));
+          return pa - pb; // Ascending (cheapest first)
+        } else if (criterion === 'stock') {
+          const sa = parseInt(a.getAttribute('data-stock'), 10);
+          const sb = parseInt(b.getAttribute('data-stock'), 10);
+          return sb - sa; // Descending (most stock first)
+        } else {
+          // Default: score
+          const sa = parseFloat(a.getAttribute('data-score'));
+          const sb = parseFloat(b.getAttribute('data-score'));
+          return sb - sa; // Descending
+        }
+      });
+      
+      // Re-append in new order
+      cards.forEach(card => container.appendChild(card));
     }
 
     // --- THE ULTIMATE DRAG SHIELD LOGIC ---
