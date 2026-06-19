@@ -8,7 +8,54 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
-from core.pdf_processor import detect_component_type, pdf_hash, process_pdf_for_rag
+PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL", "http://127.0.0.1:8083")
+
+def detect_component_type(pdf_path: str, available_types: list = None) -> str:
+    try:
+        res = requests.post(
+            f"{PDF_PROCESSOR_SERVER_URL}/api/pdf/detect",
+            json={
+                "pdf_path": pdf_path,
+                "available_types": available_types
+            }
+        )
+        res.raise_for_status()
+        return res.json().get("detected_type", "Unknown")
+    except Exception as e:
+        print(f"Error calling pdf_processor service detect_component_type: {e}")
+        return "Unknown"
+
+def pdf_hash(filepath: str) -> str:
+    try:
+        res = requests.post(
+            f"{PDF_PROCESSOR_SERVER_URL}/api/pdf/hash",
+            json={"filepath": filepath}
+        )
+        res.raise_for_status()
+        return res.json().get("pdf_hash")
+    except Exception as e:
+        print(f"Error calling pdf_processor service pdf_hash: {e}")
+        import hashlib
+        h = hashlib.sha256()
+        with open(filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+def process_pdf_for_rag(filepath: str, filename: str):
+    try:
+        res = requests.post(
+            f"{PDF_PROCESSOR_SERVER_URL}/api/pdf/process_rag",
+            json={
+                "filepath": filepath,
+                "filename": filename
+            }
+        )
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        print(f"Error calling pdf_processor service process_pdf_for_rag: {e}")
+        return []
 DB_SERVER_URL = os.environ.get("DB_SERVER_URL", "http://127.0.0.1:8081")
 DIGIKEY_CLIENT_ID = os.environ.get("DIGIKEY_CLIENT_ID")
 

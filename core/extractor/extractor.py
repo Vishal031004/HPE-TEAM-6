@@ -6,11 +6,58 @@ import random
 from typing import List, Dict, Any
 from openai import OpenAI
 from core.prompts import BATCH_EXTRACTION_PROMPT
-from core.pdf_processor import (
-    parse_pdf_chunk_to_structured_pages,
-    get_figure_pages,
-    render_page_to_base64,
-)
+import requests
+
+PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL", "http://127.0.0.1:8083")
+
+def parse_pdf_chunk_to_structured_pages(filepath: str, start_page: int = 0, end_page: int = 25):
+    try:
+        res = requests.post(
+            f"{PDF_PROCESSOR_SERVER_URL}/api/pdf/parse_chunks",
+            json={
+                "filepath": filepath,
+                "start_page": start_page,
+                "end_page": end_page
+            }
+        )
+        res.raise_for_status()
+        data = res.json()
+        return data.get("structured_pages", []), data.get("total_pages", 0)
+    except Exception as e:
+        print(f"Error calling pdf_processor service parse_pdf_chunk_to_structured_pages: {e}")
+        return [], 0
+
+def get_figure_pages(filepath: str, start_page: int = 0, end_page: int = 25) -> List[int]:
+    try:
+        res = requests.post(
+            f"{PDF_PROCESSOR_SERVER_URL}/api/pdf/figure_pages",
+            json={
+                "filepath": filepath,
+                "start_page": start_page,
+                "end_page": end_page
+            }
+        )
+        res.raise_for_status()
+        return res.json().get("figure_pages", [])
+    except Exception as e:
+        print(f"Error calling pdf_processor service get_figure_pages: {e}")
+        return []
+
+def render_page_to_base64(filepath: str, page_num_1indexed: int, dpi: int = 150) -> str:
+    try:
+        res = requests.post(
+            f"{PDF_PROCESSOR_SERVER_URL}/api/pdf/render_page",
+            json={
+                "filepath": filepath,
+                "page_num_1indexed": page_num_1indexed,
+                "dpi": dpi
+            }
+        )
+        res.raise_for_status()
+        return res.json().get("image_b64", "")
+    except Exception as e:
+        print(f"Error calling pdf_processor service render_page_to_base64: {e}")
+        return ""
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 

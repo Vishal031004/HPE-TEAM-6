@@ -4,9 +4,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from core.pdf_processor import detect_component_type, parse_pdf_to_structured_pages
+from core.pdf_processor.pdf_processor import detect_component_type, parse_pdf_to_structured_pages
 from core.database.database import get_or_build_component_data
-from core.extractor import parse_datasheet_chunks
+from core.extractor.extractor import parse_datasheet_chunks
 from core.similarity import rank_components
 
 def get_user_weights(user_specs):
