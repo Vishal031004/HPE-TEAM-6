@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
-PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL", "http://127.0.0.1:8083")
+PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL")
 
 def detect_component_type(pdf_path: str, available_types: list = None) -> str:
     try:
@@ -252,7 +252,7 @@ def retrieve_rag_context(query: str, filename: str = None, pdf_sha256 = None, to
     except Exception as e:
         print(f"Error calling database service retrieve_rag_context: {e}")
         return []
-        
+
 EXTRACTOR_SERVER_URL = os.environ.get("EXTRACTOR_SERVER_URL", "http://127.0.0.1:8082")
 
 def parse_datasheet_staged(filepath, component_type, required_features, market_competitors, component_name="Unknown Part", chunk_size=5):

@@ -8,10 +8,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Add the workspace root directory to system path to ensure absolute imports function correctly
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-
-from core.database.database import (
+from database import (
     register_user, login_user, add_user_pdf, get_user_pdfs, get_user_pdf_hashes,
     create_chat_session, get_user_sessions, attach_pdf_to_session, get_session_data,
     save_session_messages, delete_chat_session, rename_chat_session, toggle_pin_session,
@@ -25,10 +22,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# ========================================================================
 # Pydantic Schemas for Request Bodies
-# ========================================================================
-
 class AuthRequest(BaseModel):
     username: str
     password: str
@@ -72,14 +66,12 @@ class RetrieveRagContextRequest(BaseModel):
     pdf_sha256: Union[str, List[str], None] = None
     top_k: int = 15
 
-# ========================================================================
-# User Management Endpoints
-# ========================================================================
-
+#checking if the server is up
 @app.get("/")
-def root():
-    return {"message": "Welcome to the Database Server"}
+def test():
+    return {"message": "Database Microservice is up and running!"}
 
+# User Management Endpoints
 @app.post("/api/register")
 def register(request: AuthRequest):
     success, msg = register_user(request.username, request.password)
@@ -110,10 +102,7 @@ def get_pdfs(user_id: str):
 def get_pdf_hashes(user_id: str):
     return {"pdf_hashes": get_user_pdf_hashes(user_id)}
 
-# ========================================================================
 # Session Management Endpoints
-# ========================================================================
-
 @app.post("/api/sessions/create")
 def create_session(request: SessionCreateRequest):
     session_id = create_chat_session(request.user_id, request.session_name)
@@ -168,10 +157,7 @@ def pin_session(session_id: str):
         raise HTTPException(status_code=400, detail="Failed to toggle pin session")
     return {"status": "success"}
 
-# ========================================================================
 # Spec Extraction Cache Endpoints
-# ========================================================================
-
 @app.get("/api/extraction/{pdf_hash}")
 def get_extraction(pdf_hash: str):
     record = get_cached_pdf_extraction(pdf_hash)
@@ -192,9 +178,7 @@ def save_extraction(request: SaveExtractionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ========================================================================
 # DigiKey API Cache Endpoints
-# ========================================================================
 
 @app.get("/api/digikey/token")
 def get_digikey_token():
@@ -211,9 +195,7 @@ def get_component_data(request: ComponentDataRequest):
         raise HTTPException(status_code=500, detail="Failed to retrieve component category data from DigiKey")
     return {"features": features, "competitors": competitors}
 
-# ========================================================================
 # Vector Search & RAG Chunks Endpoints
-# ========================================================================
 
 @app.get("/api/rag/has_chunks/{pdf_hash}")
 def get_has_chunks(pdf_hash: str):
@@ -240,9 +222,7 @@ def retrieve_chunks(request: RetrieveRagContextRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ========================================================================
 # Entry point for direct execution
-# ========================================================================
 if __name__ == "__main__":
     import uvicorn
     # Default port for database microservice is 8081

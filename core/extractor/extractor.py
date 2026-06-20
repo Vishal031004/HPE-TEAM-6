@@ -5,7 +5,7 @@ import time
 import random
 from typing import List, Dict, Any
 from openai import OpenAI
-from core.prompts import BATCH_EXTRACTION_PROMPT
+from prompts import BATCH_EXTRACTION_PROMPT
 import requests
 
 PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL", "http://127.0.0.1:8083")

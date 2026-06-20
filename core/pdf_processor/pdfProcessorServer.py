@@ -8,10 +8,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Add the workspace root directory to system path to ensure absolute imports function correctly
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-
-from core.pdf_processor.pdf_processor import (
+from pdf_processor import (
     detect_component_type,
     pdf_hash,
     process_pdf_for_rag,
@@ -27,9 +24,27 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# ========================================================================
+def resolve_filepath(filepath: str) -> str:
+    """Locates relative filepaths (e.g. datasheets/xxx.pdf) if the server is executed from a subfolder."""
+    if not filepath:
+        return filepath
+    if os.path.isabs(filepath):
+        return filepath
+    if os.path.exists(filepath):
+        return filepath
+    
+    # Climb up to 4 parent directories to find the relative file
+    curr = os.path.abspath(os.path.dirname(__file__))
+    for _ in range(4):
+        candidate = os.path.join(curr, filepath)
+        if os.path.exists(candidate):
+            return os.path.abspath(candidate)
+        curr = os.path.dirname(curr)
+    
+    # Fallback to original
+    return filepath
+
 # Pydantic Schemas for Request Bodies
-# ========================================================================
 
 class DetectComponentRequest(BaseModel):
     pdf_path: str
@@ -60,15 +75,18 @@ class RenderPageRequest(BaseModel):
 class ParseStructuredRequest(BaseModel):
     filepath: str
 
-# ========================================================================
-# PDF Processor Service Endpoints
-# ========================================================================
+# Checking if the server is up
+@app.get("/")
+def test():
+    return {"message": "PDF Processor Microservice is up and running!"}
 
+# PDF Processor Service Endpoints
 @app.post("/api/pdf/detect")
 def detect_endpoint(request: DetectComponentRequest):
     try:
+        resolved_path = resolve_filepath(request.pdf_path)
         detected_type = detect_component_type(
-            pdf_path=request.pdf_path,
+            pdf_path=resolved_path,
             available_types=request.available_types
         )
         return {"detected_type": detected_type}
@@ -78,7 +96,8 @@ def detect_endpoint(request: DetectComponentRequest):
 @app.post("/api/pdf/hash")
 def hash_endpoint(request: PdfHashRequest):
     try:
-        hash_val = pdf_hash(filepath=request.filepath)
+        resolved_path = resolve_filepath(request.filepath)
+        hash_val = pdf_hash(filepath=resolved_path)
         return {"pdf_hash": hash_val}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -86,8 +105,9 @@ def hash_endpoint(request: PdfHashRequest):
 @app.post("/api/pdf/process_rag")
 def process_rag_endpoint(request: ProcessRagRequest):
     try:
+        resolved_path = resolve_filepath(request.filepath)
         chunks = process_pdf_for_rag(
-            filepath=request.filepath,
+            filepath=resolved_path,
             filename=request.filename
         )
         return chunks
@@ -97,8 +117,9 @@ def process_rag_endpoint(request: ProcessRagRequest):
 @app.post("/api/pdf/parse_chunks")
 def parse_chunks_endpoint(request: ParseChunksRequest):
     try:
+        resolved_path = resolve_filepath(request.filepath)
         structured_pages, total_pages = parse_pdf_chunk_to_structured_pages(
-            filepath=request.filepath,
+            filepath=resolved_path,
             start_page=request.start_page,
             end_page=request.end_page
         )
@@ -112,8 +133,9 @@ def parse_chunks_endpoint(request: ParseChunksRequest):
 @app.post("/api/pdf/figure_pages")
 def figure_pages_endpoint(request: FigurePagesRequest):
     try:
+        resolved_path = resolve_filepath(request.filepath)
         figure_pages = get_figure_pages(
-            filepath=request.filepath,
+            filepath=resolved_path,
             start_page=request.start_page,
             end_page=request.end_page
         )
@@ -124,8 +146,9 @@ def figure_pages_endpoint(request: FigurePagesRequest):
 @app.post("/api/pdf/render_page")
 def render_page_endpoint(request: RenderPageRequest):
     try:
+        resolved_path = resolve_filepath(request.filepath)
         base64_data = render_page_to_base64(
-            filepath=request.filepath,
+            filepath=resolved_path,
             page_num_1indexed=request.page_num_1indexed,
             dpi=request.dpi
         )
@@ -136,15 +159,12 @@ def render_page_endpoint(request: RenderPageRequest):
 @app.post("/api/pdf/parse_structured")
 def parse_structured_endpoint(request: ParseStructuredRequest):
     try:
-        structured_pages = parse_pdf_to_structured_pages(filepath=request.filepath)
+        resolved_path = resolve_filepath(request.filepath)
+        structured_pages = parse_pdf_to_structured_pages(filepath=resolved_path)
         return {"structured_pages": structured_pages}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ========================================================================
-# Entry point for direct execution
-# ========================================================================
 if __name__ == "__main__":
     import uvicorn
-    # Default port for pdf_processor microservice is 8083
-    uvicorn.run("pdfProcessorServer:app", host="0.0.0.0", port=8083, reload=True)
+    uvicorn.run("pdfProcessorServer:app", host="127.0.0.1", port=8083, reload=True)

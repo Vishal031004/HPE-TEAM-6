@@ -8,10 +8,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Add the workspace root directory to system path to ensure absolute imports function correctly
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-
-from core.extractor.extractor import (
+from extractor import (
     parse_datasheet_chunks,
     parse_datasheet_staged,
     rerank_chunks_cross_encoder,
@@ -26,10 +23,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# ========================================================================
 # Pydantic Schemas for Request Bodies
-# ========================================================================
-
 class ParseChunksRequest(BaseModel):
     structured_pages: List[Dict[str, Any]]
     required_features: List[str]
@@ -63,10 +57,12 @@ class AnswerRagRequest(BaseModel):
     chat_history: Union[List[Dict[str, Any]], None] = None
     is_global: bool = False
 
-# ========================================================================
-# Extractor Service Endpoints
-# ========================================================================
+#checking if the server is up
+@app.get("/")
+def test():
+    return {"message": "Extractor Microservice is up and running!"}
 
+# Extractor Service Endpoints
 @app.post("/api/extractor/parse_chunks")
 def parse_chunks_endpoint(request: ParseChunksRequest):
     try:
@@ -142,9 +138,7 @@ def answer_rag_endpoint(request: AnswerRagRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ========================================================================
 # Entry point for direct execution
-# ========================================================================
 if __name__ == "__main__":
     import uvicorn
     # Default port for extractor microservice is 8082
