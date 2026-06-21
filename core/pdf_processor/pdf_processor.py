@@ -6,10 +6,10 @@ import base64
 import pdfplumber
 import fitz
 from typing import List, Dict, Any, Optional
-from openai import OpenAI
+import requests
 
-# Initialize OpenAI client (Unifying the stack!)
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Set LLM Server URL
+LLM_SERVER_URL = os.environ.get("LLM_SERVER_URL", "http://127.0.0.1:8086")
 
 # ========================================================================
 # ENGINE A: COMPONENT DETECTION & STRUCTURED PARSING (Existing Logic)
@@ -131,17 +131,19 @@ def detect_component_type(pdf_path: str, available_types: Optional[List[str]] = 
             If truly unclear, output 'Unknown'.
             """
         
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You output strict JSON only."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0,
-            response_format={"type": "json_object"}
+        response = requests.post(
+            f"{LLM_SERVER_URL}/api/llm/generate_text",
+            json={
+                "prompt": prompt,
+                "system_instruction": "You output strict JSON only.",
+                "model": "gpt-4o",
+                "json_mode": True,
+                "temperature": 0.0
+            }
         )
+        response.raise_for_status()
         
-        result = json.loads(response.choices[0].message.content)
+        result = json.loads(response.json()["content"])
         raw_detected_type = str(result.get("detected_type", "Unknown")).strip()
         detected_type = _normalize_detected_type(raw_detected_type, available_types, early_text)
         

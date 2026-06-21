@@ -5,7 +5,6 @@ import hashlib
 from datetime import datetime, timezone
 from collections import Counter
 from dotenv import load_dotenv
-from openai import OpenAI
 import uuid
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
@@ -15,7 +14,7 @@ DIGIKEY_CLIENT_ID = os.environ.get("DIGIKEY_CLIENT_ID")
 DIGIKEY_CLIENT_SECRET = os.environ.get("DIGIKEY_CLIENT_SECRET")
 MONGO_DB = "datasheet_hpe" 
 
-openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+LLM_SERVER_URL = os.environ.get("LLM_SERVER_URL", "http://127.0.0.1:8086")
 
 def _get_db():
     if not MONGO_URI:
@@ -314,9 +313,14 @@ def store_rag_chunks(chunks: list, pdf_sha256: str):
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
         try:
-            resp = openai_client.embeddings.create(model="text-embedding-3-small", input=batch)
-            all_embeddings.extend([r.embedding for r in resp.data])
+            res = requests.post(
+                f"{LLM_SERVER_URL}/api/llm/embeddings",
+                json={"input_data": batch, "model": "text-embedding-3-small"}
+            )
+            res.raise_for_status()
+            all_embeddings.extend(res.json()["embeddings"])
         except Exception as e:
+            print(f"❌ Failed to get embeddings: {e}")
             return
             
     if len(all_embeddings) != len(chunks): return
@@ -344,8 +348,12 @@ def retrieve_rag_context(query: str, filename: str = None, pdf_sha256 = None, to
     col = db["pdf_chunks"]
 
     try:
-        response = openai_client.embeddings.create(input=query, model="text-embedding-3-small")
-        q_emb = response.data[0].embedding
+        res = requests.post(
+            f"{LLM_SERVER_URL}/api/llm/embeddings",
+            json={"input_data": query, "model": "text-embedding-3-small"}
+        )
+        res.raise_for_status()
+        q_emb = res.json()["embeddings"]
         
         if not pdf_sha256 and filename:
             doc = col.find_one({'filename': filename}, {'pdf_hash': 1})
