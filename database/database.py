@@ -7,7 +7,8 @@ from collections import Counter
 from dotenv import load_dotenv
 import uuid
 
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
+# Load environment variables from local .env file
+load_dotenv()
 
 MONGO_URI = os.environ.get("MONGO_URI")
 DIGIKEY_CLIENT_ID = os.environ.get("DIGIKEY_CLIENT_ID")

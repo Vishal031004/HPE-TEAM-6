@@ -24,25 +24,19 @@ app = FastAPI(
     version="1.0.0"
 )
 
+DATASHEETS_DIR = os.environ.get("DATASHEETS_DIR", "datasheets")
+
 def resolve_filepath(filepath: str) -> str:
-    """Locates relative filepaths (e.g. datasheets/xxx.pdf) if the server is executed from a subfolder."""
+    """Resolves filepath to the configured DATASHEETS_DIR directory."""
     if not filepath:
         return filepath
-    if os.path.isabs(filepath):
-        return filepath
-    if os.path.exists(filepath):
-        return filepath
     
-    # Climb up to 4 parent directories to find the relative file
-    curr = os.path.abspath(os.path.dirname(__file__))
-    for _ in range(4):
-        candidate = os.path.join(curr, filepath)
-        if os.path.exists(candidate):
-            return os.path.abspath(candidate)
-        curr = os.path.dirname(curr)
+    # Extract the filename from the path to prevent directory traversal
+    filename = os.path.basename(filepath)
     
-    # Fallback to original
-    return filepath
+    # Combine with the configured datasheets directory
+    resolved = os.path.abspath(os.path.join(DATASHEETS_DIR, filename))
+    return resolved
 
 # Pydantic Schemas for Request Bodies
 
@@ -167,4 +161,5 @@ def parse_structured_endpoint(request: ParseStructuredRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("pdfProcessorServer:app", host="127.0.0.1", port=8083, reload=True)
+    # Default port for pdf_processor microservice is 8084
+    uvicorn.run("pdfProcessorServer:app", host="127.0.0.1", port=8084, reload=True)

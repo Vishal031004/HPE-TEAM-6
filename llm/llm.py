@@ -5,8 +5,8 @@ from typing import List, Dict, Any, Union
 from openai import OpenAI
 from dotenv import load_dotenv
 
-# Load env variables from root directory
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".env"))
+# Load environment variables from local .env file
+load_dotenv()
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))

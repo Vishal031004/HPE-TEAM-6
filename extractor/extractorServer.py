@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Load environment variables from local .env file
 load_dotenv()
 
 from extractor import (
@@ -141,5 +141,5 @@ def answer_rag_endpoint(request: AnswerRagRequest):
 # Entry point for direct execution
 if __name__ == "__main__":
     import uvicorn
-    # Default port for extractor microservice is 8082
-    uvicorn.run("extractorServer:app", host="0.0.0.0", port=8082, reload=True)
+    # Default port for extractor microservice is 8085
+    uvicorn.run("extractorServer:app", host="0.0.0.0", port=8085, reload=True)

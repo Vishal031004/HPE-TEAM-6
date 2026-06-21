@@ -11,4 +11,3 @@ python-multipart
 openai
 PyMuPDF
 sentence-transformers
-pydantic

@@ -7,6 +7,10 @@ import pdfplumber
 import fitz
 from typing import List, Dict, Any, Optional
 import requests
+from dotenv import load_dotenv
+
+# Load environment variables from local .env file
+load_dotenv()
 
 # Set LLM Server URL
 LLM_SERVER_URL = os.environ.get("LLM_SERVER_URL", "http://127.0.0.1:8086")

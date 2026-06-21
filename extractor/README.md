@@ -2,8 +2,8 @@
 
 The Extractor Microservice manages all heavy LLM interactions, surgical spec extraction, graph page vision analysis, intent classification, query reformulation, and cross-encoder semantic reranking.
 
-* **Default Port**: `8082`
-* **Base URL**: `http://localhost:8082`
+* **Default Port**: `8085`
+* **Base URL**: `http://localhost:8085`
 
 ---
 

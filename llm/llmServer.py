@@ -5,6 +5,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
+# Load environment variables from local .env file
+load_dotenv()
+
 # Ensure the core/llm directory is in the import path
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 

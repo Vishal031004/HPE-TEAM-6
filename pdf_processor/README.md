@@ -2,8 +2,8 @@
 
 The PDF Processor Microservice handles raw PDF text extraction, metadata extraction, structural page chunking for RAG ingestion, figure detection, page rendering (DPI to base64 images), and automated component type detection.
 
-* **Default Port**: `8083`
-* **Base URL**: `http://localhost:8083`
+* **Default Port**: `8084`
+* **Base URL**: `http://localhost:8084`
 
 ---
 

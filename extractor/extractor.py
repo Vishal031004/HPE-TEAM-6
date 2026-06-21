@@ -6,8 +6,12 @@ import random
 from typing import List, Dict, Any
 from prompts import BATCH_EXTRACTION_PROMPT
 import requests
+from dotenv import load_dotenv
 
-PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL", "http://127.0.0.1:8083")
+# Load environment variables from local .env file
+load_dotenv()
+
+PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL", "http://127.0.0.1:8084")
 
 def parse_pdf_chunk_to_structured_pages(filepath: str, start_page: int = 0, end_page: int = 25):
     try:

@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL")
+DATASHEETS_DIR = os.environ.get("DATASHEETS_DIR", "datasheets")
 
 def detect_component_type(pdf_path: str, available_types: list = None) -> str:
     try:
@@ -253,7 +254,7 @@ def retrieve_rag_context(query: str, filename: str = None, pdf_sha256 = None, to
         print(f"Error calling database service retrieve_rag_context: {e}")
         return []
 
-EXTRACTOR_SERVER_URL = os.environ.get("EXTRACTOR_SERVER_URL", "http://127.0.0.1:8082")
+EXTRACTOR_SERVER_URL = os.environ.get("EXTRACTOR_SERVER_URL", "http://127.0.0.1:8085")
 
 def parse_datasheet_staged(filepath, component_type, required_features, market_competitors, component_name="Unknown Part", chunk_size=5):
     try:
@@ -423,8 +424,8 @@ async def upload_pdf(
     session_id: str = Form(None) # Added support for the new sessions!
 ):
     """LAZY UPLOAD: Only saves the file, generates the hash, and triggers background RAG."""
-    os.makedirs("datasheets", exist_ok=True)
-    file_path = os.path.join("datasheets", file.filename)
+    os.makedirs(DATASHEETS_DIR, exist_ok=True)
+    file_path = os.path.join(DATASHEETS_DIR, file.filename)
     
     with open(file_path, "wb") as f:
         f.write(await file.read())
@@ -469,7 +470,7 @@ async def chat_with_datasheet(request: ChatRequest):
         if not request.filename:
             return {"answer": "Please specify which component you want me to find alternatives for."}
             
-        file_path = os.path.join("datasheets", request.filename)
+        file_path = os.path.join(DATASHEETS_DIR, request.filename)
         if not os.path.exists(file_path):
             return {"answer": "I cannot access the file to run the market analysis."}
 
@@ -521,7 +522,7 @@ async def chat_with_datasheet(request: ChatRequest):
         if session_data and session_data.get("attached_pdfs"):
             target_hashes = session_data["attached_pdfs"]
     elif request.filename:
-        file_path = os.path.join("datasheets", request.filename)
+        file_path = os.path.join(DATASHEETS_DIR, request.filename)
         if os.path.exists(file_path):
             target_hashes = pdf_hash(file_path)
 
@@ -581,7 +582,7 @@ async def fetch_session(session_id: str):
 
 @app.get("/api/datasheets/{filename}")
 async def get_datasheet(filename: str):
-    file_path = os.path.join("datasheets", filename)
+    file_path = os.path.join(DATASHEETS_DIR, filename)
     if os.path.exists(file_path):
         return FileResponse(file_path)
     return {"error": "File not found"}
