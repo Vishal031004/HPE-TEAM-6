@@ -11,8 +11,16 @@ import uuid
 load_dotenv()
 
 MONGO_URI = os.environ.get("MONGO_URI")
+if MONGO_URI:
+    MONGO_URI = MONGO_URI.strip("'\"")
+
 DIGIKEY_CLIENT_ID = os.environ.get("DIGIKEY_CLIENT_ID")
+if DIGIKEY_CLIENT_ID:
+    DIGIKEY_CLIENT_ID = DIGIKEY_CLIENT_ID.strip("'\"")
+
 DIGIKEY_CLIENT_SECRET = os.environ.get("DIGIKEY_CLIENT_SECRET")
+if DIGIKEY_CLIENT_SECRET:
+    DIGIKEY_CLIENT_SECRET = DIGIKEY_CLIENT_SECRET.strip("'\"")
 MONGO_DB = "datasheet_hpe" 
 
 LLM_SERVER_URL = os.environ.get("LLM_SERVER_URL", "http://127.0.0.1:8086")

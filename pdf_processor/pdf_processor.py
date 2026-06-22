@@ -14,6 +14,8 @@ load_dotenv()
 
 # Set LLM Server URL
 LLM_SERVER_URL = os.environ.get("LLM_SERVER_URL", "http://127.0.0.1:8086")
+if LLM_SERVER_URL:
+    LLM_SERVER_URL = LLM_SERVER_URL.strip("'\"")
 
 # ========================================================================
 # ENGINE A: COMPONENT DETECTION & STRUCTURED PARSING (Existing Logic)

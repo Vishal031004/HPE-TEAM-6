@@ -9,7 +9,12 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL")
+if PDF_PROCESSOR_SERVER_URL:
+    PDF_PROCESSOR_SERVER_URL = PDF_PROCESSOR_SERVER_URL.strip("'\"")
+
 DATASHEETS_DIR = os.environ.get("DATASHEETS_DIR", "datasheets")
+if DATASHEETS_DIR:
+    DATASHEETS_DIR = DATASHEETS_DIR.strip("'\"")
 
 def detect_component_type(pdf_path: str, available_types: list = None) -> str:
     try:
@@ -58,7 +63,12 @@ def process_pdf_for_rag(filepath: str, filename: str):
         print(f"Error calling pdf_processor service process_pdf_for_rag: {e}")
         return []
 DB_SERVER_URL = os.environ.get("DB_SERVER_URL", "http://127.0.0.1:8081")
+if DB_SERVER_URL:
+    DB_SERVER_URL = DB_SERVER_URL.strip("'\"")
+
 DIGIKEY_CLIENT_ID = os.environ.get("DIGIKEY_CLIENT_ID")
+if DIGIKEY_CLIENT_ID:
+    DIGIKEY_CLIENT_ID = DIGIKEY_CLIENT_ID.strip("'\"")
 
 def register_user(username, password):
     try:
@@ -255,6 +265,8 @@ def retrieve_rag_context(query: str, filename: str = None, pdf_sha256 = None, to
         return []
 
 EXTRACTOR_SERVER_URL = os.environ.get("EXTRACTOR_SERVER_URL", "http://127.0.0.1:8085")
+if EXTRACTOR_SERVER_URL:
+    EXTRACTOR_SERVER_URL = EXTRACTOR_SERVER_URL.strip("'\"")
 
 def parse_datasheet_staged(filepath, component_type, required_features, market_competitors, component_name="Unknown Part", chunk_size=5):
     try:

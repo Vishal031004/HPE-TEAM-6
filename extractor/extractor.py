@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL", "http://127.0.0.1:8084")
+if PDF_PROCESSOR_SERVER_URL:
+    PDF_PROCESSOR_SERVER_URL = PDF_PROCESSOR_SERVER_URL.strip("'\"")
 
 def parse_pdf_chunk_to_structured_pages(filepath: str, start_page: int = 0, end_page: int = 25):
     try:
@@ -63,6 +65,8 @@ def render_page_to_base64(filepath: str, page_num_1indexed: int, dpi: int = 150)
         return ""
 
 LLM_SERVER_URL = os.environ.get("LLM_SERVER_URL", "http://127.0.0.1:8086")
+if LLM_SERVER_URL:
+    LLM_SERVER_URL = LLM_SERVER_URL.strip("'\"")
 
 # ========================================================================
 # ENGINE A: MATHEMATICAL SPEC EXTRACTION (Existing Logic)

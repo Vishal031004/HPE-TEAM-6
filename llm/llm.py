@@ -9,7 +9,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Initialize OpenAI client
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+api_key = os.environ.get("OPENAI_API_KEY")
+if api_key:
+    api_key = api_key.strip("'\"")
+client = OpenAI(api_key=api_key)
 
 def _parse_retry_delay_seconds(error_text: str, default_seconds: float = 0.5) -> float:
     """Parses rate-limit retry hints like 'Please try again in 10ms'."""

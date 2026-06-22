@@ -1,0 +1,21 @@
+# Ignore virtual environments
+venv/
+.venv/
+env/
+
+# Ignore local database/datasheet directories
+**/datasheets/*
+main-app/datasheets/*
+
+# Ignore python caches and system files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache/
+.vscode/
+.git/
+.gitignore
+
+# Ignore local env secrets
+**/*.env

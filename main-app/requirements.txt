@@ -1,13 +1,6 @@
-groq
-python-dotenv
-pdfplumber
-PyPDF2
-requests
-pymongo
-numpy
 fastapi
 uvicorn
+python-dotenv
+pydantic
+requests
 python-multipart
-openai
-PyMuPDF
-sentence-transformers

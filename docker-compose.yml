@@ -1,0 +1,105 @@
+version: '3.7'
+
+services:
+  llm:
+    build:
+      context: ./llm
+      dockerfile: Dockerfile
+    container_name: hpe-llm
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    networks:
+      - hpe-network
+    expose:
+      - "8086"
+    ports:
+      - "8086:8086"
+    restart: unless-stopped
+
+  database:
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    container_name: hpe-database
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - DIGIKEY_CLIENT_ID=${DIGIKEY_CLIENT_ID}
+      - DIGIKEY_CLIENT_SECRET=${DIGIKEY_CLIENT_SECRET}
+      - LLM_SERVER_URL=http://hpe-llm:8086
+    networks:
+      - hpe-network
+    expose:
+      - "8081"
+    ports:
+      - "8081:8081"
+    depends_on:
+      - llm
+    restart: unless-stopped
+
+  pdf_processor:
+    build:
+      context: ./pdf_processor
+      dockerfile: Dockerfile
+    container_name: hpe-pdf-processor
+    environment:
+      - LLM_SERVER_URL=http://hpe-llm:8086
+      - DATASHEETS_DIR=/app/datasheets
+    volumes:
+      - shared-datasheets:/app/datasheets
+    networks:
+      - hpe-network
+    expose:
+      - "8084"
+    ports:
+      - "8084:8084"
+    depends_on:
+      - llm
+    restart: unless-stopped
+
+  extractor:
+    build:
+      context: ./extractor
+      dockerfile: Dockerfile
+    container_name: hpe-extractor
+    environment:
+      - LLM_SERVER_URL=http://hpe-llm:8086
+      - PDF_PROCESSOR_SERVER_URL=http://hpe-pdf-processor:8084
+    networks:
+      - hpe-network
+    expose:
+      - "8085"
+    ports:
+      - "8085:8085"
+    depends_on:
+      - llm
+      - pdf_processor
+    restart: unless-stopped
+
+  main-app:
+    build:
+      context: ./main-app
+      dockerfile: Dockerfile
+    container_name: hpe-main-app
+    environment:
+      - DB_SERVER_URL=http://hpe-database:8081
+      - EXTRACTOR_SERVER_URL=http://hpe-extractor:8085
+      - PDF_PROCESSOR_SERVER_URL=http://hpe-pdf-processor:8084
+      - DATASHEETS_DIR=/app/datasheets
+    volumes:
+      - shared-datasheets:/app/datasheets
+    networks:
+      - hpe-network
+    ports:
+      - "8000:8000"
+    depends_on:
+      - database
+      - extractor
+      - pdf_processor
+    restart: unless-stopped
+
+volumes:
+  shared-datasheets:
+
+networks:
+  hpe-network:
+    driver: bridge

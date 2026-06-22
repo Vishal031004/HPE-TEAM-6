@@ -1,0 +1,37 @@
+version: '3.7'
+
+services:
+  llm:
+    build:
+      context: ./llm
+      dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yourusername}/hpe-llm:latest
+    platform: ${TARGET_PLATFORM:-linux/arm64}
+
+  database:
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yourusername}/hpe-database:latest
+    platform: ${TARGET_PLATFORM:-linux/arm64}
+
+  pdf_processor:
+    build:
+      context: ./pdf_processor
+      dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yourusername}/hpe-pdf-processor:latest
+    platform: ${TARGET_PLATFORM:-linux/arm64}
+
+  extractor:
+    build:
+      context: ./extractor
+      dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yourusername}/hpe-extractor:latest
+    platform: ${TARGET_PLATFORM:-linux/arm64}
+
+  main-app:
+    build:
+      context: ./main-app
+      dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yourusername}/hpe-main-app:latest
+    platform: ${TARGET_PLATFORM:-linux/arm64}

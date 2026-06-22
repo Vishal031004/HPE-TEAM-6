@@ -25,6 +25,8 @@ app = FastAPI(
 )
 
 DATASHEETS_DIR = os.environ.get("DATASHEETS_DIR", "datasheets")
+if DATASHEETS_DIR:
+    DATASHEETS_DIR = DATASHEETS_DIR.strip("'\"")
 
 def resolve_filepath(filepath: str) -> str:
     """Resolves filepath to the configured DATASHEETS_DIR directory."""
