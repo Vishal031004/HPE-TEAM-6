@@ -63,9 +63,11 @@ def generate_text(
     system_instruction: str = None,
     model: str = "gpt-4o",
     json_mode: bool = False,
-    temperature: float = 0.0
-) -> str:
-    """Generates text completion based on prompt/system instruction or a message list."""
+    temperature: float = 0.0,
+    tools: List[Dict[str, Any]] = None,
+    tool_choice: Union[str, Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Generates text completion or tool calls based on prompt/system instruction or a message list."""
     if not messages:
         messages = []
         if system_instruction:
@@ -80,9 +82,31 @@ def generate_text(
     }
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
+    if tools:
+        kwargs["tools"] = tools
+    if tool_choice:
+        kwargs["tool_choice"] = tool_choice
 
     response = _chat_completion_with_retry(**kwargs)
-    return response.choices[0].message.content.strip()
+    message = response.choices[0].message
+    
+    result = {
+        "content": message.content.strip() if message.content else "",
+        "tool_calls": []
+    }
+    
+    if message.tool_calls:
+        for tc in message.tool_calls:
+            result["tool_calls"].append({
+                "id": tc.id,
+                "type": tc.type,
+                "function": {
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments
+                }
+            })
+            
+    return result
 
 def generate_from_image(
     prompt: str,

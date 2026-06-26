@@ -55,6 +55,8 @@ At a minimum, configure the following keys:
    DB_SERVER_URL="http://127.0.0.1:8081"
    EXTRACTOR_SERVER_URL="http://127.0.0.1:8085"
    PDF_PROCESSOR_SERVER_URL="http://127.0.0.1:8084"
+   DIGIKEY_CLIENT_ID="your-digikey-client-id"
+   DIGIKEY_CLIENT_SECRET="your-digikey-client-secret"
    ```
 
 ---

@@ -27,6 +27,8 @@ class GenerateTextRequest(BaseModel):
     model: str = "gpt-4o"
     json_mode: bool = False
     temperature: float = 0.0
+    tools: Optional[List[Dict[str, Any]]] = None
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = None
 
 class GenerateFromImageRequest(BaseModel):
     prompt: str
@@ -48,15 +50,17 @@ def test():
 @app.post("/api/llm/generate_text")
 def generate_text_endpoint(request: GenerateTextRequest):
     try:
-        content = generate_text(
+        result = generate_text(
             messages=request.messages,
             prompt=request.prompt,
             system_instruction=request.system_instruction,
             model=request.model,
             json_mode=request.json_mode,
-            temperature=request.temperature
+            temperature=request.temperature,
+            tools=request.tools,
+            tool_choice=request.tool_choice
         )
-        return {"content": content}
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

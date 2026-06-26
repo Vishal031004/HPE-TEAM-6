@@ -1,5 +1,6 @@
 import os
 import requests
+import json
 from fastapi import FastAPI, UploadFile, File, Query, BackgroundTasks, Form
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
@@ -7,6 +8,10 @@ from typing import List
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+
+LLM_SERVER_URL = os.environ.get("LLM_SERVER_URL", "http://127.0.0.1:8086")
+if LLM_SERVER_URL:
+    LLM_SERVER_URL = LLM_SERVER_URL.strip("'\"")
 
 PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL")
 if PDF_PROCESSOR_SERVER_URL:
@@ -349,6 +354,158 @@ def answer_rag_question(query, retrieved_chunks, chat_history=None, is_global=Fa
     except Exception as e:
         print(f"Error calling extractor service answer_rag: {e}")
         return "I encountered an error trying to communicate with the generation service."
+def run_agentic_chat_loop(request, max_iterations=5):
+    system_prompt = (
+        "You are an expert hardware engineering AI assistant. "
+        "You have access to several tools. Use them to answer the user's request. "
+        "1. If they ask about technical specs, search datasheets, use `search_datasheets`.\n"
+        "2. If they ask about the current workspace, uploaded files, or metadata, use `get_workspace_metadata`.\n"
+        "3. If they ask about live market pricing or stock, use `fetch_live_pricing`.\n"
+        "If a tool doesn't return enough info, you can call it again with different parameters or try another tool."
+    )
+    
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    if request.chat_history:
+        for msg in request.chat_history:
+            messages.append({"role": msg.get("role", "user"), "content": msg.get("content") or ""})
+            
+    messages.append({"role": "user", "content": request.question})
+    
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_datasheets",
+                "description": "Searches the uploaded datasheet chunks for technical specs or text.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "The technical search query."}
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_workspace_metadata",
+                "description": "Returns metadata about the current workspace (uploaded files, session names, etc.).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "fetch_live_pricing",
+                "description": "Fetches real-time price and stock from DigiKey.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "part_number": {"type": "string"}
+                    },
+                    "required": ["part_number"]
+                }
+            }
+        }
+    ]
+    
+    def execute_tool(name, args):
+        if name == "search_datasheets":
+            query = args.get("query", "")
+            target_hashes = None
+            if request.is_global and request.session_id:
+                session_data = get_session_data(request.session_id)
+                if session_data:
+                    target_hashes = session_data.get("attached_pdfs", [])
+            elif request.filename:
+                file_path = os.path.join(DATASHEETS_DIR, request.filename)
+                if os.path.exists(file_path):
+                    target_hashes = [pdf_hash(file_path)]
+                    
+            if target_hashes is None:
+                if request.user_id:
+                    target_hashes = get_user_pdf_hashes(request.user_id)
+                else:
+                    target_hashes = []
+                    
+            if not target_hashes:
+                return "There are no PDFs in your current workspace to search."
+                
+            raw_chunks = retrieve_rag_context(query, request.filename, pdf_sha256=target_hashes, top_k=15)
+            if not raw_chunks:
+                return "No relevant text found."
+            
+            ranked_chunks = rerank_chunks_cross_encoder(query, raw_chunks, top_k=5)
+            context_text = ""
+            for chunk in ranked_chunks:
+                context_text += f"--- Source: {chunk.get('filename', 'Unknown')} (Page {chunk.get('page')}) ---\n{chunk.get('text')}\n\n"
+            return context_text
+
+        elif name == "get_workspace_metadata":
+            if request.session_id:
+                session_data = get_session_data(request.session_id)
+                if session_data:
+                    pdfs = session_data.get("attached_pdfs", [])
+                    user_pdfs = get_user_pdfs(request.user_id) if request.user_id else []
+                    hash_to_name = {p["pdf_hash"]: p["filename"] for p in user_pdfs}
+                    files = [hash_to_name.get(h, "Unknown PDF") for h in pdfs]
+                    return f"Workspace Name: {session_data.get('session_name')}\nAttached Files: {', '.join(files) if files else 'None'}"
+                return "Workspace not found."
+            elif request.filename:
+                return f"Currently interacting directly with file: {request.filename}"
+            return "No workspace or file selected."
+                
+        elif name == "fetch_live_pricing":
+            pn = args.get("part_number", "")
+            res = _fetch_digikey_pricing(pn)
+            return json.dumps(res)
+            
+        return "Unknown tool."
+
+    for _ in range(max_iterations):
+        res = requests.post(
+            f"{LLM_SERVER_URL}/api/llm/generate_text",
+            json={"messages": messages, "model": "gpt-4o", "tools": tools, "temperature": 0.2}
+        )
+        if res.status_code != 200:
+            return "Failed to communicate with LLM."
+            
+        payload = res.json()
+        content = payload.get("content", "")
+        tool_calls = payload.get("tool_calls", [])
+        
+        ast_msg = {"role": "assistant"}
+        if content:
+            ast_msg["content"] = content
+        if tool_calls:
+            ast_msg["tool_calls"] = tool_calls
+        messages.append(ast_msg)
+        
+        if not tool_calls:
+            return content
+            
+        for tc in tool_calls:
+            name = tc["function"]["name"]
+            try:
+                args = json.loads(tc["function"]["arguments"])
+            except:
+                args = {}
+                
+            print(f"🛠️  Agent called tool: {name}({args})")
+            tool_result = execute_tool(name, args)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc["id"],
+                "content": str(tool_result)
+            })
+            
+    return "Agent loop exceeded max iterations."
+
 from core.similarity import rank_components
 
 app = FastAPI()
@@ -521,31 +678,9 @@ async def chat_with_datasheet(request: ChatRequest):
         }
     
     # ==========================================
-    # PATH B: STANDARD ADVANCED RAG
+    # PATH B: AGENTIC WORKFLOW
     # ==========================================
-    search_query = request.question
-    if request.chat_history:
-        search_query = reformulate_query(request.question, request.chat_history)
-
-    target_hashes = None
-
-    if request.is_global and request.session_id:
-        session_data = get_session_data(request.session_id)
-        if session_data and session_data.get("attached_pdfs"):
-            target_hashes = session_data["attached_pdfs"]
-    elif request.filename:
-        file_path = os.path.join(DATASHEETS_DIR, request.filename)
-        if os.path.exists(file_path):
-            target_hashes = pdf_hash(file_path)
-
-    raw_chunks = retrieve_rag_context(search_query, request.filename, pdf_sha256=target_hashes, top_k=35)
-    
-    if not raw_chunks:
-        return {"answer": "I couldn't find any relevant text in the database to answer that question."}
-    
-    ranked_chunks = rerank_chunks_cross_encoder(search_query, raw_chunks, top_k=5)
-    answer = answer_rag_question(request.question, ranked_chunks, request.chat_history, is_global=request.is_global)
-    
+    answer = run_agentic_chat_loop(request)
     return {"answer": answer}
 
 @app.post("/api/sessions")
