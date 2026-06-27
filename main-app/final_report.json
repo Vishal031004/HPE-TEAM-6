@@ -1,0 +1,120 @@
+{
+    "original_pdf": "20001945F.pdf",
+    "component_type": "Resistor",
+    "extracted_specs": {
+        "Resistance": "Not Found",
+        "Tolerance": "Not Found",
+        "Power (Watts)": "Not Found",
+        "Composition": "Not Found",
+        "Features": "Not Found",
+        "Temperature Coefficient": "Not Found",
+        "Operating Temperature": "Not Found",
+        "Package / Case": "Not Found",
+        "Supplier Device Package": "Not Found",
+        "Size / Dimension": "Not Found",
+        "Height - Seated (Max)": "Not Found",
+        "Number of Terminations": "Not Found",
+        "Failure Rate": "Not Found",
+        "Ratings": "Not Found"
+    },
+    "applied_weights": {},
+    "top_5_recommendations": [
+        {
+            "part_number": "RC0402JR-070RL",
+            "score": 0,
+            "specs": {
+                "Resistance": "0 Ohms",
+                "Tolerance": "Jumper",
+                "Power (Watts)": "-",
+                "Composition": "Thick Film",
+                "Features": "Moisture Resistant",
+                "Temperature Coefficient": "-",
+                "Operating Temperature": "-55\u00b0C ~ 155\u00b0C",
+                "Package / Case": "0402 (1005 Metric)",
+                "Supplier Device Package": "0402",
+                "Size / Dimension": "0.039\" L x 0.020\" W (1.00mm x 0.50mm)",
+                "Height - Seated (Max)": "0.016\" (0.40mm)",
+                "Number of Terminations": "2",
+                "Failure Rate": "-"
+            }
+        },
+        {
+            "part_number": "RC0402FR-07100KL",
+            "score": 0,
+            "specs": {
+                "Resistance": "100 kOhms",
+                "Tolerance": "\u00b11%",
+                "Power (Watts)": "0.063W, 1/16W",
+                "Composition": "Thick Film",
+                "Features": "Moisture Resistant",
+                "Temperature Coefficient": "\u00b1100ppm/\u00b0C",
+                "Operating Temperature": "-55\u00b0C ~ 155\u00b0C",
+                "Package / Case": "0402 (1005 Metric)",
+                "Supplier Device Package": "0402",
+                "Size / Dimension": "0.039\" L x 0.020\" W (1.00mm x 0.50mm)",
+                "Height - Seated (Max)": "0.016\" (0.40mm)",
+                "Number of Terminations": "2",
+                "Failure Rate": "-"
+            }
+        },
+        {
+            "part_number": "RC0603FR-0710KL",
+            "score": 0,
+            "specs": {
+                "Resistance": "10 kOhms",
+                "Tolerance": "\u00b11%",
+                "Power (Watts)": "0.1W, 1/10W",
+                "Composition": "Thick Film",
+                "Features": "Moisture Resistant",
+                "Temperature Coefficient": "\u00b1100ppm/\u00b0C",
+                "Operating Temperature": "-55\u00b0C ~ 155\u00b0C",
+                "Package / Case": "0603 (1608 Metric)",
+                "Supplier Device Package": "0603",
+                "Size / Dimension": "0.063\" L x 0.031\" W (1.60mm x 0.80mm)",
+                "Height - Seated (Max)": "0.022\" (0.55mm)",
+                "Number of Terminations": "2",
+                "Failure Rate": "-"
+            }
+        },
+        {
+            "part_number": "ERJ-2GE0R00X",
+            "score": 0,
+            "specs": {
+                "Resistance": "0 Ohms",
+                "Tolerance": "Jumper",
+                "Power (Watts)": "-",
+                "Composition": "Thick Film",
+                "Features": "Automotive AEC-Q200",
+                "Temperature Coefficient": "-",
+                "Operating Temperature": "-55\u00b0C ~ 155\u00b0C",
+                "Package / Case": "0402 (1005 Metric)",
+                "Supplier Device Package": "0402",
+                "Ratings": "-",
+                "Size / Dimension": "0.039\" L x 0.020\" W (1.00mm x 0.50mm)",
+                "Height - Seated (Max)": "0.016\" (0.40mm)",
+                "Number of Terminations": "2",
+                "Failure Rate": "-"
+            }
+        },
+        {
+            "part_number": "CRCW040210K0FKED",
+            "score": 0,
+            "specs": {
+                "Resistance": "10 kOhms",
+                "Tolerance": "\u00b11%",
+                "Power (Watts)": "0.063W, 1/16W",
+                "Composition": "Thick Film",
+                "Features": "Automotive AEC-Q200",
+                "Temperature Coefficient": "\u00b1100ppm/\u00b0C",
+                "Operating Temperature": "-55\u00b0C ~ 155\u00b0C",
+                "Package / Case": "0402 (1005 Metric)",
+                "Supplier Device Package": "0402",
+                "Ratings": "-",
+                "Size / Dimension": "0.039\" L x 0.020\" W (1.00mm x 0.50mm)",
+                "Height - Seated (Max)": "0.016\" (0.40mm)",
+                "Number of Terminations": "2",
+                "Failure Rate": "-"
+            }
+        }
+    ]
+}

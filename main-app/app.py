@@ -8,15 +8,347 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
-from core.pdf_processor import detect_component_type, pdf_hash, process_pdf_for_rag
-from core.database import (
-    get_or_build_component_data, get_cached_pdf_extraction, save_pdf_extraction,
-    register_user, login_user, add_user_pdf, get_user_pdfs, get_user_pdf_hashes,
-    store_rag_chunks, retrieve_rag_context, has_rag_chunks,
-    get_digikey_token_lazy, DIGIKEY_CLIENT_ID,
-    create_chat_session, get_user_sessions, attach_pdf_to_session, get_session_data, save_session_messages, delete_chat_session, toggle_pin_session, rename_chat_session
-)
-from core.extractor import parse_datasheet_staged, rerank_chunks_cross_encoder, answer_rag_question, reformulate_query, route_user_intent
+PDF_PROCESSOR_SERVER_URL = os.environ.get("PDF_PROCESSOR_SERVER_URL")
+if PDF_PROCESSOR_SERVER_URL:
+    PDF_PROCESSOR_SERVER_URL = PDF_PROCESSOR_SERVER_URL.strip("'\"")
+
+DATASHEETS_DIR = os.environ.get("DATASHEETS_DIR", "datasheets")
+if DATASHEETS_DIR:
+    DATASHEETS_DIR = DATASHEETS_DIR.strip("'\"")
+
+def detect_component_type(pdf_path: str, available_types: list = None) -> str:
+    try:
+        res = requests.post(
+            f"{PDF_PROCESSOR_SERVER_URL}/api/pdf/detect",
+            json={
+                "pdf_path": pdf_path,
+                "available_types": available_types
+            }
+        )
+        res.raise_for_status()
+        return res.json().get("detected_type", "Unknown")
+    except Exception as e:
+        print(f"Error calling pdf_processor service detect_component_type: {e}")
+        return "Unknown"
+
+def pdf_hash(filepath: str) -> str:
+    try:
+        res = requests.post(
+            f"{PDF_PROCESSOR_SERVER_URL}/api/pdf/hash",
+            json={"filepath": filepath}
+        )
+        res.raise_for_status()
+        return res.json().get("pdf_hash")
+    except Exception as e:
+        print(f"Error calling pdf_processor service pdf_hash: {e}")
+        import hashlib
+        h = hashlib.sha256()
+        with open(filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+def process_pdf_for_rag(filepath: str, filename: str):
+    try:
+        res = requests.post(
+            f"{PDF_PROCESSOR_SERVER_URL}/api/pdf/process_rag",
+            json={
+                "filepath": filepath,
+                "filename": filename
+            }
+        )
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        print(f"Error calling pdf_processor service process_pdf_for_rag: {e}")
+        return []
+DB_SERVER_URL = os.environ.get("DB_SERVER_URL", "http://127.0.0.1:8081")
+if DB_SERVER_URL:
+    DB_SERVER_URL = DB_SERVER_URL.strip("'\"")
+
+DIGIKEY_CLIENT_ID = os.environ.get("DIGIKEY_CLIENT_ID")
+if DIGIKEY_CLIENT_ID:
+    DIGIKEY_CLIENT_ID = DIGIKEY_CLIENT_ID.strip("'\"")
+
+def register_user(username, password):
+    try:
+        res = requests.post(f"{DB_SERVER_URL}/api/register", json={"username": username, "password": password})
+        res.raise_for_status()
+        data = res.json()
+        if "error" in data:
+            return False, data["error"]
+        return True, data["message"]
+    except Exception as e:
+        return False, f"Database service error: {e}"
+
+def login_user(username, password):
+    try:
+        res = requests.post(f"{DB_SERVER_URL}/api/login", json={"username": username, "password": password})
+        res.raise_for_status()
+        data = res.json()
+        if "error" in data:
+            return None, data["error"]
+        return data["user_id"], data["message"]
+    except Exception as e:
+        return None, f"Database service error: {e}"
+
+def add_user_pdf(user_id, pdf_hash, filename):
+    try:
+        res = requests.post(f"{DB_SERVER_URL}/api/user/pdf", json={"user_id": user_id, "pdf_hash": pdf_hash, "filename": filename})
+        res.raise_for_status()
+    except Exception as e:
+        print(f"Error calling database service add_user_pdf: {e}")
+
+def get_user_pdfs(user_id):
+    try:
+        res = requests.get(f"{DB_SERVER_URL}/api/user/{user_id}/pdfs")
+        res.raise_for_status()
+        return res.json().get("pdfs", [])
+    except Exception as e:
+        print(f"Error calling database service get_user_pdfs: {e}")
+        return []
+
+def get_user_pdf_hashes(user_id):
+    try:
+        res = requests.get(f"{DB_SERVER_URL}/api/user/{user_id}/pdf_hashes")
+        res.raise_for_status()
+        return res.json().get("pdf_hashes", [])
+    except Exception as e:
+        print(f"Error calling database service get_user_pdf_hashes: {e}")
+        return []
+
+def create_chat_session(user_id: str, session_name: str):
+    try:
+        res = requests.post(f"{DB_SERVER_URL}/api/sessions/create", json={"user_id": user_id, "session_name": session_name})
+        res.raise_for_status()
+        return res.json().get("session_id")
+    except Exception as e:
+        print(f"Error calling database service create_chat_session: {e}")
+        return None
+
+def get_user_sessions(user_id: str):
+    try:
+        res = requests.get(f"{DB_SERVER_URL}/api/user/{user_id}/sessions")
+        res.raise_for_status()
+        return res.json().get("sessions", [])
+    except Exception as e:
+        print(f"Error calling database service get_user_sessions: {e}")
+        return []
+
+def attach_pdf_to_session(session_id: str, pdf_hash: str):
+    try:
+        res = requests.post(f"{DB_SERVER_URL}/api/sessions/attach", json={"session_id": session_id, "pdf_hash": pdf_hash})
+        return res.status_code == 200
+    except Exception as e:
+        print(f"Error calling database service attach_pdf_to_session: {e}")
+        return False
+
+def get_session_data(session_id: str):
+    try:
+        res = requests.get(f"{DB_SERVER_URL}/api/sessions/{session_id}")
+        if res.status_code == 404:
+            return None
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        print(f"Error calling database service get_session_data: {e}")
+        return None
+
+def save_session_messages(session_id: str, new_messages: list):
+    try:
+        res = requests.post(f"{DB_SERVER_URL}/api/sessions/save_messages", json={"session_id": session_id, "new_messages": new_messages})
+        res.raise_for_status()
+    except Exception as e:
+        print(f"Error calling database service save_session_messages: {e}")
+
+def delete_chat_session(session_id: str):
+    try:
+        res = requests.delete(f"{DB_SERVER_URL}/api/sessions/{session_id}")
+        return res.status_code == 200
+    except Exception as e:
+        print(f"Error calling database service delete_chat_session: {e}")
+        return False
+
+def rename_chat_session(session_id: str, new_name: str):
+    try:
+        res = requests.patch(f"{DB_SERVER_URL}/api/sessions/{session_id}/rename", json={"new_name": new_name})
+        return res.status_code == 200
+    except Exception as e:
+        print(f"Error calling database service rename_chat_session: {e}")
+        return False
+
+def toggle_pin_session(session_id: str):
+    try:
+        res = requests.patch(f"{DB_SERVER_URL}/api/sessions/{session_id}/pin")
+        return res.status_code == 200
+    except Exception as e:
+        print(f"Error calling database service toggle_pin_session: {e}")
+        return False
+
+def get_cached_pdf_extraction(pdf_sha256: str):
+    try:
+        res = requests.get(f"{DB_SERVER_URL}/api/extraction/{pdf_sha256}")
+        if res.status_code == 404:
+            return None
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        print(f"Error calling database service get_cached_pdf_extraction: {e}")
+        return None
+
+def save_pdf_extraction(pdf_sha256: str, filename: str, detected_type: str, extracted_specs: dict):
+    try:
+        res = requests.post(
+            f"{DB_SERVER_URL}/api/extraction",
+            json={
+                "pdf_hash": pdf_sha256,
+                "filename": filename,
+                "detected_type": detected_type,
+                "extracted_specs": extracted_specs
+            }
+        )
+        res.raise_for_status()
+    except Exception as e:
+        print(f"Error calling database service save_pdf_extraction: {e}")
+
+def get_digikey_token_lazy():
+    try:
+        res = requests.get(f"{DB_SERVER_URL}/api/digikey/token")
+        res.raise_for_status()
+        return res.json().get("access_token")
+    except Exception as e:
+        print(f"Error calling database service get_digikey_token_lazy: {e}")
+        return None
+
+def get_or_build_component_data(component_type: str):
+    try:
+        res = requests.post(f"{DB_SERVER_URL}/api/component_data", json={"component_type": component_type})
+        if res.status_code != 200:
+            return None, None
+        data = res.json()
+        return data.get("features"), data.get("competitors")
+    except Exception as e:
+        print(f"Error calling database service get_or_build_component_data: {e}")
+        return None, None
+
+def has_rag_chunks(pdf_sha256: str) -> bool:
+    try:
+        res = requests.get(f"{DB_SERVER_URL}/api/rag/has_chunks/{pdf_sha256}")
+        res.raise_for_status()
+        return res.json().get("has_chunks", False)
+    except Exception as e:
+        print(f"Error calling database service has_rag_chunks: {e}")
+        return False
+
+def store_rag_chunks(chunks: list, pdf_sha256: str):
+    try:
+        res = requests.post(f"{DB_SERVER_URL}/api/rag/store_chunks", json={"chunks": chunks, "pdf_hash": pdf_sha256})
+        res.raise_for_status()
+    except Exception as e:
+        print(f"Error calling database service store_rag_chunks: {e}")
+
+def retrieve_rag_context(query: str, filename: str = None, pdf_sha256 = None, top_k: int = 15):
+    try:
+        res = requests.post(
+            f"{DB_SERVER_URL}/api/rag/retrieve",
+            json={
+                "query": query,
+                "filename": filename,
+                "pdf_sha256": pdf_sha256,
+                "top_k": top_k
+            }
+        )
+        res.raise_for_status()
+        return res.json().get("results", [])
+    except Exception as e:
+        print(f"Error calling database service retrieve_rag_context: {e}")
+        return []
+
+EXTRACTOR_SERVER_URL = os.environ.get("EXTRACTOR_SERVER_URL", "http://127.0.0.1:8085")
+if EXTRACTOR_SERVER_URL:
+    EXTRACTOR_SERVER_URL = EXTRACTOR_SERVER_URL.strip("'\"")
+
+def parse_datasheet_staged(filepath, component_type, required_features, market_competitors, component_name="Unknown Part", chunk_size=5):
+    try:
+        res = requests.post(
+            f"{EXTRACTOR_SERVER_URL}/api/extractor/parse_staged",
+            json={
+                "filepath": filepath,
+                "component_type": component_type,
+                "required_features": required_features,
+                "market_competitors": market_competitors,
+                "component_name": component_name,
+                "chunk_size": chunk_size
+            }
+        )
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        print(f"Error calling extractor service parse_datasheet_staged: {e}")
+        return {f: "Not Found" for f in required_features}
+
+def rerank_chunks_cross_encoder(query, chunks, top_k=5):
+    try:
+        res = requests.post(
+            f"{EXTRACTOR_SERVER_URL}/api/extractor/rerank",
+            json={
+                "query": query,
+                "chunks": chunks,
+                "top_k": top_k
+            }
+        )
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        print(f"Error calling extractor service rerank: {e}")
+        return chunks[:top_k]
+
+def reformulate_query(query, chat_history):
+    try:
+        res = requests.post(
+            f"{EXTRACTOR_SERVER_URL}/api/extractor/reformulate",
+            json={
+                "query": query,
+                "chat_history": chat_history
+            }
+        )
+        res.raise_for_status()
+        return res.json().get("query", query)
+    except Exception as e:
+        print(f"Error calling extractor service reformulate: {e}")
+        return query
+
+def route_user_intent(query, chat_history):
+    try:
+        res = requests.post(
+            f"{EXTRACTOR_SERVER_URL}/api/extractor/route_intent",
+            json={
+                "query": query,
+                "chat_history": chat_history
+            }
+        )
+        res.raise_for_status()
+        return res.json().get("intent", "information_retrieval")
+    except Exception as e:
+        print(f"Error calling extractor service route_intent: {e}")
+        return "information_retrieval"
+
+def answer_rag_question(query, retrieved_chunks, chat_history=None, is_global=False):
+    try:
+        res = requests.post(
+            f"{EXTRACTOR_SERVER_URL}/api/extractor/answer_rag",
+            json={
+                "query": query,
+                "retrieved_chunks": retrieved_chunks,
+                "chat_history": chat_history,
+                "is_global": is_global
+            }
+        )
+        res.raise_for_status()
+        return res.json().get("answer", "I encountered an error trying to generate an answer.")
+    except Exception as e:
+        print(f"Error calling extractor service answer_rag: {e}")
+        return "I encountered an error trying to communicate with the generation service."
 from core.similarity import rank_components
 
 app = FastAPI()
@@ -104,8 +436,8 @@ async def upload_pdf(
     session_id: str = Form(None) # Added support for the new sessions!
 ):
     """LAZY UPLOAD: Only saves the file, generates the hash, and triggers background RAG."""
-    os.makedirs("datasheets", exist_ok=True)
-    file_path = os.path.join("datasheets", file.filename)
+    os.makedirs(DATASHEETS_DIR, exist_ok=True)
+    file_path = os.path.join(DATASHEETS_DIR, file.filename)
     
     with open(file_path, "wb") as f:
         f.write(await file.read())
@@ -150,7 +482,7 @@ async def chat_with_datasheet(request: ChatRequest):
         if not request.filename:
             return {"answer": "Please specify which component you want me to find alternatives for."}
             
-        file_path = os.path.join("datasheets", request.filename)
+        file_path = os.path.join(DATASHEETS_DIR, request.filename)
         if not os.path.exists(file_path):
             return {"answer": "I cannot access the file to run the market analysis."}
 
@@ -202,7 +534,7 @@ async def chat_with_datasheet(request: ChatRequest):
         if session_data and session_data.get("attached_pdfs"):
             target_hashes = session_data["attached_pdfs"]
     elif request.filename:
-        file_path = os.path.join("datasheets", request.filename)
+        file_path = os.path.join(DATASHEETS_DIR, request.filename)
         if os.path.exists(file_path):
             target_hashes = pdf_hash(file_path)
 
@@ -262,7 +594,7 @@ async def fetch_session(session_id: str):
 
 @app.get("/api/datasheets/{filename}")
 async def get_datasheet(filename: str):
-    file_path = os.path.join("datasheets", filename)
+    file_path = os.path.join(DATASHEETS_DIR, filename)
     if os.path.exists(file_path):
         return FileResponse(file_path)
     return {"error": "File not found"}
