@@ -367,9 +367,10 @@
     <main class="main-workspace">
       
       <div class="workspace-header">
-        <div>
-          <div class="session-title" id="current-session-title">Select or create a workspace</div>
-          <div class="attached-pdfs" id="attached-pdfs-container"></div>
+        <div style="display:flex; align-items:center; gap:16px;">
+          <h2 id="current-session-title" style="margin:0; font-size:22px; font-weight:600; color:var(--accent);">New Project</h2>
+        </div>
+        <div id="attached-pdfs-container" style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px;">
         </div>
       </div>
 
@@ -394,7 +395,7 @@
           
           <div id="file-staging-area" class="file-staging-area"></div>
 
-          <input type="text" id="chat-input" class="chat-input" placeholder="Ask a question or type 'find alternatives'..." onkeypress="if(event.key === 'Enter') sendQuestion()">
+          <input type="text" id="chat-input" class="chat-input" placeholder="Ask a question..." onkeypress="if(event.key === 'Enter') sendQuestion()">
         </div>
 
         <button class="btn" id="send-btn" onclick="sendQuestion()" disabled>SEND</button>
@@ -406,6 +407,19 @@
   </div>
 
   <div id="selection-tooltip" onmousedown="event.preventDefault(); triggerQueryFurther();">🔍 Ask about this</div>
+
+  <!-- Find Alternatives Modal -->
+  <div id="find-alt-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; width:400px; max-width:90%;">
+      <h3 style="margin-top:0; color:var(--accent); font-family:var(--mono);">Find Alternatives</h3>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:16px;">Select a PDF to find market alternatives for its component.</p>
+      <div id="find-alt-modal-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:24px; max-height:300px; overflow-y:auto; font-family:var(--mono); font-size:13px;"></div>
+      <div style="display:flex; justify-content:flex-end; gap:12px;">
+        <button class="btn btn-outline" style="padding:6px 12px;" onclick="document.getElementById('find-alt-modal').style.display='none'">Cancel</button>
+        <button class="btn" style="padding:6px 12px;" onclick="executeFindAlternatives()">🔍 Analyze</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     // --- STATE ---
@@ -424,8 +438,17 @@
     const TOTAL_WEIGHT_BUDGET = 100;
 
     // --- INIT ---
-    if (currentUser && sessionStorage.getItem('loggedIn')) showApp();
-    else showAuth();
+    if (currentUser && sessionStorage.getItem('loggedIn')) {
+      showApp();
+      const lastSessionId = sessionStorage.getItem('lastSessionId');
+      const lastSessionName = sessionStorage.getItem('lastSessionName');
+      if (lastSessionId && lastSessionName) {
+        // Delay slightly to let sidebar load
+        setTimeout(() => loadSessionData(lastSessionId, lastSessionName), 300);
+      }
+    } else {
+      showAuth();
+    }
 
     function showAuth() { document.getElementById('view-auth').style.display = 'flex'; document.getElementById('view-app').style.display = 'none'; }
     function showApp() { document.getElementById('view-auth').style.display = 'none'; document.getElementById('view-app').style.display = 'flex'; loadSidebarSessions(); }
@@ -633,6 +656,11 @@
 
     async function loadSessionData(sessionId, sessionName) {
       currentSessionId = sessionId;
+      
+      // Save for refresh persistence
+      sessionStorage.setItem('lastSessionId', sessionId);
+      sessionStorage.setItem('lastSessionName', sessionName);
+      
       document.getElementById('current-session-title').innerText = sessionName;
       document.getElementById('chat-input').disabled = false; 
       document.getElementById('send-btn').disabled = false;
@@ -653,14 +681,28 @@
       const pdfContainer = document.getElementById('attached-pdfs-container');
       pdfContainer.innerHTML = "";
       
-      if (data.attached_pdfs) {
+      window.currentAttachedPdfs = data.attached_pdfs || [];
+      
+      if (data.attached_pdfs && data.attached_pdfs.length > 0) {
         // Use a Set to filter out duplicate database entries instantly
         const seenFiles = new Set();
+
+        // Restore latestFilename so find_alternatives knows what file we are talking about
+        latestFilename = data.attached_pdfs[data.attached_pdfs.length - 1].filename;
         
         data.attached_pdfs.forEach(pdf => { 
           if (!seenFiles.has(pdf.filename)) {
             seenFiles.add(pdf.filename);
-            pdfContainer.innerHTML += `<a href="/api/datasheets/${encodeURIComponent(pdf.filename)}" target="_blank" class="pdf-pill" title="Click to view PDF">📄 ${pdf.filename}</a>`; 
+            pdfContainer.innerHTML += `
+              <span class="pdf-pill-group" style="display:inline-flex; align-items:center; gap:2px; margin-right:4px;">
+                <a href="/api/datasheets/${encodeURIComponent(pdf.filename)}" target="_blank" class="pdf-pill" title="Click to view PDF" style="margin-right:0; border-radius:4px 0 0 4px;">📄 ${pdf.filename}</a>
+                <button onclick="triggerFindAlternativesForFile('${pdf.filename.replace(/'/g, "\\'")}')"
+                  style="background:var(--surface2); border:1px solid var(--border); border-left:none; color:var(--accent); cursor:pointer; padding:4px 6px; font-size:12px; border-radius:0;" 
+                  title="Find alternatives for ${pdf.filename}">🔍</button>
+                <button onclick="detachPdfFromWorkspace('${pdf.hash}', '${pdf.filename.replace(/'/g, "\\'")}')"
+                  style="background:var(--surface2); border:1px solid var(--border); border-left:none; color:var(--danger); cursor:pointer; padding:4px 6px; font-size:12px; border-radius:0 4px 4px 0;" 
+                  title="Remove ${pdf.filename} from workspace">✕</button>
+              </span>`; 
           }
         });
       }
@@ -673,8 +715,28 @@
           appendSystemMessage("Workspace initialized. Attach a PDF or start typing.");
       } else {
           chatHistory.forEach(msg => { 
-              if (msg.role === 'user') appendUserMessage(msg.content); 
-              else appendSystemMessage(msg.content); 
+              if (msg.role === 'user') {
+                appendUserMessage(msg.content); 
+              } else {
+                try {
+                  const data = JSON.parse(msg.content);
+                  if (data.type === "interactive_ranking") {
+                    promptForWeightsInChat(data.answer, data.extracted_specs, data.detected_type);
+                  } else if (data.type === "math_engine_results") {
+                    appendRawHTML(data.html);
+                    if (data.pricing) {
+                      injectPricing(data.results, data.container_id, data.pricing);
+                    } else {
+                      // Legacy message: inject empty pricing to avoid network loop
+                      injectPricing(data.results, data.container_id, {});
+                    }
+                  } else {
+                    appendSystemMessage(msg.content);
+                  }
+                } catch(e) {
+                  appendSystemMessage(msg.content); 
+                }
+              }
           });
       }
     }
@@ -728,7 +790,9 @@
           } else {
             card.className = 'file-card success';
             card.querySelector('.status-icon').innerText = '📄';
-            // Notice: We NO LONGER instantly push it to the top bar here!
+            // Save the pdf_hash so it can be detached later
+            if (!window.currentAttachedPdfs) window.currentAttachedPdfs = [];
+            window.currentAttachedPdfs.push({hash: data.pdf_hash, filename: file.name});
           }
         } catch (err) { 
           card.className = 'file-card error';
@@ -818,10 +882,44 @@ async function sendQuestion() {
       let fullMessage = text;
       let displayMessage = text;
 
-      // If no text was typed but a file is being sent, inject a default message
+      // If no text was typed but a file is being sent, inject a local UI message (DO NOT call LLM backend)
       if (!text && !activeQuote && hasStagedFiles) {
-        fullMessage = "I have attached a new datasheet. Please analyze it and find alternatives.";
-        displayMessage = "I have attached a new datasheet.";
+        const topContainer = document.getElementById('attached-pdfs-container');
+        let lastFileName = "";
+        
+        stagingArea.querySelectorAll('.file-card.success .file-name').forEach(el => {
+          const fileName = el.innerText;
+          lastFileName = fileName;
+          const isDuplicate = Array.from(topContainer.children).some(child => child.innerText.includes(fileName));
+          if (!isDuplicate) {
+            topContainer.innerHTML += `
+              <span class="pdf-pill-group" style="display:inline-flex; align-items:center; gap:2px; margin-right:4px;">
+                <a href="/api/datasheets/${encodeURIComponent(fileName)}" target="_blank" class="pdf-pill" title="Click to view PDF" style="margin-right:0; border-radius:4px 0 0 4px;">📄 ${fileName}</a>
+                <button onclick="triggerFindAlternativesForFile('${fileName.replace(/'/g, "\\'")}')" 
+                  style="background:var(--surface2); border:1px solid var(--border); border-left:none; color:var(--accent); cursor:pointer; padding:4px 6px; font-size:12px; border-radius:0;" 
+                  title="Find alternatives for ${fileName}">🔍</button>
+                <button onclick="detachPdfFromWorkspace('', '${fileName.replace(/'/g, "\\'")}')" 
+                  style="background:var(--surface2); border:1px solid var(--border); border-left:none; color:var(--danger); cursor:pointer; padding:4px 6px; font-size:12px; border-radius:0 4px 4px 0;" 
+                  title="Remove ${fileName} from workspace">✕</button>
+              </span>`;
+          }
+        });
+
+        stagingArea.innerHTML = "";
+        input.value = "";
+        
+        const msgHtml = `<span style="color:var(--accent)">📄 <b>${lastFileName}</b> has been successfully attached to the workspace!</span><br><br>You can now ask questions about this datasheet below, or click its 🔍 button at the top to find alternatives.`;
+        appendSystemMessage(msgHtml);
+        
+        chatHistory.push({ "role": "assistant", "content": msgHtml });
+        fetch("/api/sessions/save_messages", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: currentSessionId, new_messages: [
+            { "role": "assistant", "content": msgHtml }
+          ]})
+        });
+        
+        return;
       }
 
       // If a quote is attached, format it for the UI and the LLM Backend
@@ -838,15 +936,24 @@ async function sendQuestion() {
 
       input.value = ""; 
       
-      // ADDED HERE: Clear out the uploaded file previews from the input stack on send
       // Move all staged files to the top header permanently BEFORE clearing the input box
       const topContainer = document.getElementById('attached-pdfs-container');
       
       stagingArea.querySelectorAll('.file-card.success .file-name').forEach(el => {
         const fileName = el.innerText;
+        latestFilename = fileName;
         const isDuplicate = Array.from(topContainer.children).some(child => child.innerText.includes(fileName));
         if (!isDuplicate) {
-          topContainer.innerHTML += `<a href="/api/datasheets/${encodeURIComponent(fileName)}" target="_blank" class="pdf-pill" title="Click to view PDF">📄 ${fileName}</a>`;
+          topContainer.innerHTML += `
+            <span class="pdf-pill-group" style="display:inline-flex; align-items:center; gap:2px; margin-right:4px;">
+              <a href="/api/datasheets/${encodeURIComponent(fileName)}" target="_blank" class="pdf-pill" title="Click to view PDF" style="margin-right:0; border-radius:4px 0 0 4px;">📄 ${fileName}</a>
+              <button onclick="triggerFindAlternativesForFile('${fileName.replace(/'/g, "\\'")}')" 
+                style="background:var(--surface2); border:1px solid var(--border); border-left:none; color:var(--accent); cursor:pointer; padding:4px 6px; font-size:12px; border-radius:0;" 
+                title="Find alternatives for ${fileName}">🔍</button>
+              <button onclick="detachPdfFromWorkspace('', '${fileName.replace(/'/g, "\\'")}')" 
+                style="background:var(--surface2); border:1px solid var(--border); border-left:none; color:var(--danger); cursor:pointer; padding:4px 6px; font-size:12px; border-radius:0 4px 4px 0;" 
+                title="Remove ${fileName} from workspace">✕</button>
+            </span>`;
         }
       });
 
@@ -860,26 +967,75 @@ async function sendQuestion() {
       document.getElementById('chat-container').scrollTo({ top: document.getElementById('chat-container').scrollHeight });
 
       try {
-        const res = await fetch("/api/chat", {
+        const res = await fetch("/api/chat/stream", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          // Send the full packaged message (Quote + Text) to the backend!
-          body: JSON.stringify({ question: fullMessage, filename: latestFilename, user_id: currentUser, session_id: currentSessionId, is_global: true, chat_history: chatHistory })
+          body: JSON.stringify({
+            user_id: currentUser, session_id: currentSessionId,
+            question: fullMessage, chat_history: chatHistory,
+            is_global: true, active_file: latestFilename
+          })
         });
         
-        const data = await res.json();
-        document.getElementById(loadingId).remove();
-
-        if (data.error) { appendSystemMessage(`<span style="color:var(--danger)">Error: ${data.error}</span>`); return; }
-
-        chatHistory.push({ "role": "user", "content": text });
-
-        // AGENT ROUTER LOGIC
-        if (data.type === "interactive_ranking") {
-          extractedSpecs = data.extracted_specs;
-          detectedType = data.detected_type;
-          promptForWeightsInChat(data.answer); 
-          chatHistory.push({ "role": "assistant", "content": "(Rendered interactive market math widget)" });
+        const contentType = res.headers.get("content-type") || "";
+        
+        if (contentType.includes("text/event-stream")) {
+          // ✨ SSE STREAMING MODE — render tokens word-by-word
+          document.getElementById(loadingId).remove();
+          
+          const streamMsgId = "stream-" + Date.now();
+          const chatContainer = document.getElementById('chat-container');
+          chatContainer.innerHTML += `<div class="msg-row system" id="${streamMsgId}"><div class="bubble"><div class="bubble-content" id="${streamMsgId}-content"></div></div></div>`;
+          
+          let fullAnswer = "";
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop(); // Keep incomplete line in buffer
+            
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const token = line.slice(6);
+                if (token === "[DONE]") break;
+                if (token.startsWith("[Error:")) {
+                  fullAnswer += token;
+                  break;
+                }
+                try {
+                  fullAnswer += JSON.parse(token);
+                } catch(e) {
+                  fullAnswer += token; // fallback just in case
+                }
+                const contentEl = document.getElementById(`${streamMsgId}-content`);
+                if (contentEl) {
+                  contentEl.innerHTML = marked.parse(fullAnswer);
+                  chatContainer.scrollTo({ top: chatContainer.scrollHeight });
+                }
+              }
+            }
+          }
+          
+          // Final render with full markdown
+          const contentEl = document.getElementById(`${streamMsgId}-content`);
+          if (contentEl) contentEl.innerHTML = marked.parse(fullAnswer);
+          
+          chatHistory.push({ "role": "user", "content": text || displayMessage });
+          chatHistory.push({ "role": "assistant", "content": fullAnswer });
+          
         } else {
+          // JSON fallback (shouldn't normally happen now since chat/stream is pure RAG)
+          const data = await res.json();
+          document.getElementById(loadingId).remove();
+          
+          if (data.error) { appendSystemMessage(`<span style="color:var(--danger)">Error: ${data.error}</span>`); return; }
+          
+          chatHistory.push({ "role": "user", "content": text || displayMessage });
           appendSystemMessage(data.answer);
           chatHistory.push({ "role": "assistant", "content": data.answer });
         }
@@ -888,13 +1044,24 @@ async function sendQuestion() {
         await fetch("/api/sessions/save_messages", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: currentSessionId, new_messages: [
-            { "role": "user", "content": text },
+            { "role": "user", "content": text || displayMessage },
             { "role": "assistant", "content": chatHistory[chatHistory.length-1].content }
           ]})
         });
       } catch (err) {
-        document.getElementById(loadingId).remove();
-        appendSystemMessage(`<span style="color:var(--danger)">Chat failed.</span>`);
+        document.getElementById(loadingId)?.remove();
+        let errorMsg = '';
+        if (err.message && err.message.includes('Failed to fetch')) {
+          errorMsg = '🔌 <b>Connection Error</b> — Could not reach the server. Please check if all services are running and try again.';
+        } else if (err.message && (err.message.includes('500') || err.message.includes('502') || err.message.includes('503'))) {
+          errorMsg = '⚙️ <b>Server Error</b> — The analysis service encountered an internal error. Please try again in a moment.';
+        } else if (err.name === 'AbortError' || (err.message && err.message.includes('timeout'))) {
+          errorMsg = '⏳ <b>Request Timed Out</b> — The server took too long to respond. This can happen with very large datasheets.';
+        } else {
+          errorMsg = `⚠️ <b>Something went wrong</b> — ${err.message || 'An unexpected error occurred.'}`;
+        }
+        errorMsg += `<br><button onclick="sendQuestion()" style="margin-top:8px; padding:6px 16px; background:var(--surface2); border:1px solid var(--border); color:var(--accent); border-radius:4px; cursor:pointer; font-family:var(--mono); font-size:12px;">🔄 Retry</button>`;
+        appendSystemMessage(`<div style="color:var(--danger)">${errorMsg}</div>`);
       }
     }
     // --- INTERACTIVE MATH WIDGETS ---
@@ -904,100 +1071,129 @@ async function sendQuestion() {
       return String(val);
     }
 
-    function promptForWeightsInChat(introText) {
+    if (!window.mathEngineStates) window.mathEngineStates = {};
+
+    function promptForWeightsInChat(introText, specs, dType) {
+      const engineId = 'engine-' + Date.now() + Math.floor(Math.random() * 1000);
       let validFeatures = [];
-      for (const [feature, rawValue] of Object.entries(extractedSpecs)) {
+      for (const [feature, rawValue] of Object.entries(specs)) {
         const displayVal = unpackValue(rawValue);
         if (displayVal !== "Not Found" && displayVal !== "null") validFeatures.push(feature);
       }
 
       const numToSelect = Math.ceil(validFeatures.length / 2);
-      activeFeatures = validFeatures.slice(0, numToSelect);
-      inactiveFeatures = validFeatures.slice(numToSelect);
-      currentWeightValues = {}; 
+      
+      window.mathEngineStates[engineId] = {
+        activeFeatures: validFeatures.slice(0, numToSelect),
+        inactiveFeatures: validFeatures.slice(numToSelect),
+        currentWeightValues: {},
+        extractedSpecs: specs,
+        detectedType: dType
+      };
 
       let html = `<p>${introText}</p>`;
-      html += `<p style="margin-top:12px;">Component Class: <strong style="color:var(--accent)">${detectedType}</strong></p>`;
-      html += `<div id="active-weight-panel-container"></div>`;
-      html += `<button class="btn" style="margin-top:20px;" onclick="submitWeights(this)">▶ RUN MARKET MATH ENGINE</button>`;
+      html += `<p style="margin-top:12px;">Component Class: <strong style="color:var(--accent)">${dType}</strong></p>`;
+      html += `<div id="weight-panel-container-${engineId}"></div>`;
+      html += `<button class="btn" style="margin-top:20px;" onclick="submitWeights(this, '${engineId}')">▶ RUN MARKET MATH ENGINE</button>`;
       
       appendSystemMessage(html);
-      renderWeightPanel();
+      renderWeightPanel(engineId);
     }
 
-    function saveCurrentWeights() {
-      activeFeatures.forEach(feature => {
+    function saveCurrentWeights(engineId) {
+      const state = window.mathEngineStates[engineId];
+      state.activeFeatures.forEach(feature => {
         const cleanId = feature.replace(/\W+/g, '');
-        const el = document.getElementById(`w-${cleanId}`);
-        if (el) currentWeightValues[feature] = parseInt(el.value || '0', 10);
+        const el = document.getElementById(`w-${engineId}-${cleanId}`);
+        if (el) state.currentWeightValues[feature] = parseInt(el.value || '0', 10);
       });
     }
 
-    function removeFeature(featureName) { saveCurrentWeights(); activeFeatures = activeFeatures.filter(f => f !== featureName); inactiveFeatures.push(featureName); currentWeightValues[featureName] = 0; renderWeightPanel(); }
-    function addFeature() { const selectEl = document.getElementById('add-feature-select'); if (!selectEl || !selectEl.value) return; const featureName = selectEl.value; saveCurrentWeights(); inactiveFeatures = inactiveFeatures.filter(f => f !== featureName); activeFeatures.push(featureName); if (!(featureName in currentWeightValues)) currentWeightValues[featureName] = 0; renderWeightPanel(); }
+    function removeFeature(featureName, engineId) { 
+      const state = window.mathEngineStates[engineId];
+      saveCurrentWeights(engineId); 
+      state.activeFeatures = state.activeFeatures.filter(f => f !== featureName); 
+      state.inactiveFeatures.push(featureName); 
+      state.currentWeightValues[featureName] = 0; 
+      renderWeightPanel(engineId); 
+    }
 
-    function renderWeightPanel() {
-      const container = document.getElementById('active-weight-panel-container');
+    function addFeature(engineId) { 
+      const state = window.mathEngineStates[engineId];
+      const selectEl = document.getElementById(`add-feature-select-${engineId}`); 
+      if (!selectEl || !selectEl.value) return; 
+      const featureName = selectEl.value; 
+      saveCurrentWeights(engineId); 
+      state.inactiveFeatures = state.inactiveFeatures.filter(f => f !== featureName); 
+      state.activeFeatures.push(featureName); 
+      if (!(featureName in state.currentWeightValues)) state.currentWeightValues[featureName] = 0; 
+      renderWeightPanel(engineId); 
+    }
+
+    function renderWeightPanel(engineId) {
+      const state = window.mathEngineStates[engineId];
+      const container = document.getElementById(`weight-panel-container-${engineId}`);
       if (!container) return;
 
       let html = `<div class="weight-panel">
         <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-family:var(--mono); font-size:12px;">
-          <span>Allocated: <strong id="allocated-weight" style="color:var(--warn)">0%</strong></span>
-          <span>Remaining: <strong id="remaining-weight" style="color:var(--accent)">100%</strong></span>
+          <span>Allocated: <strong id="allocated-weight-${engineId}" style="color:var(--warn)">0%</strong></span>
+          <span>Remaining: <strong id="remaining-weight-${engineId}" style="color:var(--accent)">100%</strong></span>
         </div>`;
 
-      activeFeatures.forEach(feature => {
-        const displayVal = unpackValue(extractedSpecs[feature]);
+      state.activeFeatures.forEach(feature => {
+        const displayVal = unpackValue(state.extractedSpecs[feature]);
         const cleanId = feature.replace(/\W+/g, '');
-        const val = currentWeightValues[feature] || 0;
+        const val = state.currentWeightValues[feature] || 0;
         html += `
           <div class="weight-row">
             <div class="spec-name">${feature}</div>
             <div class="spec-val">${displayVal}</div>
-            <input type="range" min="0" max="100" value="${val}" id="w-${cleanId}" oninput="handleWeightChange(this)">
-            <div class="weight-val" id="v-${cleanId}">${val}%</div>
-            <button class="btn-remove" onclick="removeFeature('${feature}')" title="Remove">−</button>
+            <input type="range" min="0" max="100" value="${val}" id="w-${engineId}-${cleanId}" oninput="handleWeightChange(this, '${engineId}')">
+            <div class="weight-val" id="v-${engineId}-${cleanId}">${val}%</div>
+            <button class="btn-remove" onclick="removeFeature('${feature}', '${engineId}')" title="Remove">−</button>
           </div>`;
       });
 
-      if (inactiveFeatures.length > 0) {
+      if (state.inactiveFeatures.length > 0) {
         html += `
           <div class="add-feature-bar">
-            <select id="add-feature-select">${inactiveFeatures.map(f => `<option value="${f}">${f}</option>`).join('')}</select>
-            <button class="btn-add" onclick="addFeature()" title="Add Feature">+</button>
+            <select id="add-feature-select-${engineId}">${state.inactiveFeatures.map(f => `<option value="${f}">${f}</option>`).join('')}</select>
+            <button class="btn-add" onclick="addFeature('${engineId}')" title="Add Feature">+</button>
           </div>`;
       }
 
       html += `</div>`;
       container.innerHTML = html;
       
-      activeFeatures.forEach(feature => { const el = document.getElementById(`w-${feature.replace(/\W+/g, '')}`); if (el) handleWeightChange(el, false); });
-      refreshWeightBudgetUI();
+      state.activeFeatures.forEach(feature => { const el = document.getElementById(`w-${engineId}-${feature.replace(/\W+/g, '')}`); if (el) handleWeightChange(el, '${engineId}'); });
+      refreshWeightBudgetUI(engineId);
     }
 
-    function getWeightSliders() { return Array.from(document.getElementById('active-weight-panel-container')?.querySelectorAll('input[type="range"][id^="w-"]') || []); }
-    function getAllocatedWeight() { return getWeightSliders().reduce((s, el) => s + parseInt(el.value || '0', 10), 0); }
-    function refreshWeightBudgetUI() {
-      const total = getAllocatedWeight(); const remaining = Math.max(0, TOTAL_WEIGHT_BUDGET - total);
-      const allocEl = document.getElementById('allocated-weight'); const remEl = document.getElementById('remaining-weight');
+    function getWeightSliders(engineId) { return Array.from(document.getElementById(`weight-panel-container-${engineId}`)?.querySelectorAll('input[type="range"]') || []); }
+    function getAllocatedWeight(engineId) { return getWeightSliders(engineId).reduce((s, el) => s + parseInt(el.value || '0', 10), 0); }
+    function refreshWeightBudgetUI(engineId) {
+      const total = getAllocatedWeight(engineId); const remaining = Math.max(0, TOTAL_WEIGHT_BUDGET - total);
+      const allocEl = document.getElementById(`allocated-weight-${engineId}`); const remEl = document.getElementById(`remaining-weight-${engineId}`);
       if (allocEl) allocEl.innerText = `${total}%`; if (remEl) remEl.innerText = `${remaining}%`;
-      getWeightSliders().forEach(slider => {
+      getWeightSliders(engineId).forEach(slider => {
         const ownVal = parseInt(slider.value || '0', 10); slider.max = String(Math.min(TOTAL_WEIGHT_BUDGET, ownVal + remaining));
         const valEl = document.getElementById(`v-${slider.id.slice(2)}`); if (valEl) valEl.innerText = `${ownVal}%`;
       });
     }
 
-    function handleWeightChange(slider) {
+    function handleWeightChange(slider, engineId) {
       const v = parseInt(slider.value||'0',10); const m = parseInt(slider.max||'100',10);
       if(v > m) slider.value = String(m);
-      refreshWeightBudgetUI();
+      refreshWeightBudgetUI(engineId);
     }
 
-    async function submitWeights(btn) {
+    async function submitWeights(btn, engineId) {
       btn.disabled = true; btn.innerText = "Processing...";
       let weights = {};
-      for (const feature of Object.keys(extractedSpecs)) {
-        const el = document.getElementById(`w-${feature.replace(/\W+/g, '')}`);
+      const state = window.mathEngineStates[engineId];
+      for (const feature of Object.keys(state.extractedSpecs)) {
+        const el = document.getElementById(`w-${engineId}-${feature.replace(/\W+/g, '')}`);
         if(el) weights[feature] = parseInt(el.value);
       }
 
@@ -1008,20 +1204,18 @@ async function sendQuestion() {
       try {
         const res = await fetch("/api/rank", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ detected_type: detectedType, extracted_specs: extractedSpecs, weights: weights })
+          body: JSON.stringify({ detected_type: state.detectedType, extracted_specs: state.extractedSpecs, weights: weights })
         });
         const data = await res.json();
         document.getElementById(loadingId).remove();
-        
-        // Remove the 'active' ID so future widgets don't clash
-        const oldPanel = document.getElementById('active-weight-panel-container');
-        if (oldPanel) oldPanel.removeAttribute('id');
 
         const containerId = 'res-' + Date.now();
-        let resHTML = `<p><strong>Market Alternatives Computed:</strong></p>`;
+        let resHTML = `<div style="display:flex; justify-content:space-between; align-items:center;">
+          <p style="margin:0;"><strong>Market Alternatives Computed:</strong></p>
+        </div>`;
         
         resHTML += `
-          <div id="sort-controls-${containerId}" style="display:none; margin-bottom:16px; gap:10px; align-items:center;">
+          <div id="sort-controls-${containerId}" style="display:none; margin-top:16px; margin-bottom:16px; gap:10px; align-items:center;">
             <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">Sort by:</span>
             <button class="sort-btn" onclick="sortCards('${containerId}', 'price')" title="Lowest to Highest Price">💰 Price ↑</button>
             <button class="sort-btn" onclick="sortCards('${containerId}', 'stock')" title="Highest to Lowest Stock">📦 Stock ↓</button>
@@ -1051,7 +1245,24 @@ async function sendQuestion() {
         resHTML += `</div>`;
         
         appendRawHTML(resHTML);
-        fetchLivePricing(data.results, containerId);
+        const pricingData = await fetchLivePricing(data.results, containerId);
+
+        // Save results to chat history
+        const resultData = {
+          type: "math_engine_results",
+          html: resHTML,
+          results: data.results,
+          container_id: containerId,
+          pricing: pricingData
+        };
+        chatHistory.push({ "role": "assistant", "content": JSON.stringify(resultData) });
+        
+        fetch("/api/sessions/save_messages", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: currentSessionId, new_messages: [
+            { "role": "assistant", "content": JSON.stringify(resultData) }
+          ]})
+        });
 
       } catch (err) {
         document.getElementById(loadingId).remove();
@@ -1060,13 +1271,7 @@ async function sendQuestion() {
       btn.style.display = 'none'; // Hide button after successful run
     }
 
-    async function fetchLivePricing(results, containerId) {
-      const partNumbers = results.map(r => r.part_number);
-      try {
-        const res = await fetch("/api/pricing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ part_numbers: partNumbers }) });
-        const data = await res.json();
-        const pricing = data.pricing || {};
-
+    function injectPricing(results, containerId, pricing) {
         results.forEach((match) => {
           const el = document.getElementById(`pricing-${containerId}-${match.part_number}`);
           if (!el) return;
@@ -1099,9 +1304,19 @@ async function sendQuestion() {
         
         const controls = document.getElementById(`sort-controls-${containerId}`);
         if (controls) controls.style.display = 'flex';
+    }
 
-      } catch (err) {
-        results.forEach(match => { const el = document.getElementById(`pricing-${containerId}-${match.part_number}`); if (el) el.innerHTML = `<span class="pricing-loading">⚠️ Pricing unavailable</span>`; });
+    async function fetchLivePricing(results, containerId) {
+      const partNumbers = results.map(r => r.part_number);
+      try {
+        const res = await fetch("/api/pricing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ part_numbers: partNumbers }) });
+        const data = await res.json();
+        const pricing = data.pricing || {};
+        injectPricing(results, containerId, pricing);
+        return pricing;
+      } catch (e) {
+        console.error("Pricing fetch failed:", e);
+        return {};
       }
     }
 
@@ -1127,8 +1342,126 @@ async function sendQuestion() {
         }
       });
       
-      // Re-append in new order
+    // Re-append in new order
       cards.forEach(card => container.appendChild(card));
+    }
+
+    // --- FIND ALTERNATIVES MODAL & FLOW ---
+    function openFindAlternativesModal() {
+      if (!currentSessionId) {
+        alert("Please select or create a workspace first.");
+        return;
+      }
+      
+      const attached = window.currentAttachedPdfs || [];
+      const uniqueAttached = [];
+      const seen = new Set();
+      for (const p of attached) {
+        if (!seen.has(p.filename)) {
+          seen.add(p.filename);
+          uniqueAttached.push(p);
+        }
+      }
+
+      if (uniqueAttached.length === 0) {
+        alert("Please attach at least 1 PDF to this workspace first.");
+        return;
+      }
+
+      const listDiv = document.getElementById('find-alt-modal-list');
+      listDiv.innerHTML = uniqueAttached.map((p, i) => `
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+          <input type="radio" name="find-alt-radio" value="${p.filename}" ${i === 0 ? 'checked' : ''}>
+          <span>📄 ${p.filename}</span>
+        </label>
+      `).join('');
+
+      document.getElementById('find-alt-modal').style.display = 'flex';
+    }
+
+    async function executeFindAlternatives() {
+      const selected = document.querySelector('input[name="find-alt-radio"]:checked');
+      if (!selected) {
+        alert("Please select a PDF.");
+        return;
+      }
+      
+      document.getElementById('find-alt-modal').style.display = 'none';
+      await triggerFindAlternativesForFile(selected.value);
+    }
+
+    async function triggerFindAlternativesForFile(filename) {
+      if (!currentSessionId) return;
+
+      appendUserMessage(`Find alternatives for ${filename}`);
+
+      const loadingId = "loading-alt-" + Date.now();
+      document.getElementById('chat-container').innerHTML += `<div class="msg-row system" id="${loadingId}"><div class="bubble"><div class="bubble-content" style="color:var(--muted)">Extracting specs and searching market...</div></div></div>`;
+      document.getElementById('chat-container').scrollTo({ top: document.getElementById('chat-container').scrollHeight });
+
+      try {
+        const res = await fetch("/api/find_alternatives", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: filename, session_id: currentSessionId, user_id: currentUser })
+        });
+        const data = await res.json();
+        document.getElementById(loadingId).remove();
+
+        if (data.error) {
+          appendSystemMessage(`<span style="color:var(--danger)">Error: ${data.error}</span>`);
+          return;
+        }
+
+        if (data.type === "interactive_ranking") {
+          promptForWeightsInChat(data.answer, data.extracted_specs, data.detected_type);
+          
+          // Save to chat history for persistence
+          const userMsg = { "role": "user", "content": `Find alternatives for ${filename}` };
+          const assistantMsg = { "role": "assistant", "content": JSON.stringify(data) };
+          chatHistory.push(userMsg);
+          chatHistory.push(assistantMsg);
+
+          await fetch("/api/sessions/save_messages", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: currentSessionId, new_messages: [userMsg, assistantMsg] })
+          });
+        }
+      } catch (err) {
+        document.getElementById(loadingId)?.remove();
+        appendSystemMessage(`<div style="color:var(--danger)">⚠️ <b>Something went wrong</b> — ${err.message || 'Failed to find alternatives.'}</div>`);
+      }
+    }
+
+    async function detachPdfFromWorkspace(pdfHash, filename) {
+      if (!currentSessionId) return;
+      if (!confirm(`Remove "${filename}" from this workspace?`)) return;
+
+      // If we don't have the hash, find it from currentAttachedPdfs
+      if (!pdfHash) {
+        const match = (window.currentAttachedPdfs || []).find(p => p.filename === filename);
+        if (match) pdfHash = match.hash;
+      }
+      if (!pdfHash) {
+        alert("Could not find the PDF hash. Please refresh and try again.");
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/sessions/${currentSessionId}/detach_pdf`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: currentSessionId, pdf_hash: pdfHash })
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+          // Reload the session to refresh the PDF pill bar
+          const titleEl = document.getElementById('current-session-title');
+          loadSessionData(currentSessionId, titleEl.innerText);
+        } else {
+          alert("Failed to remove PDF.");
+        }
+      } catch (err) {
+        alert("Error removing PDF: " + err.message);
+      }
     }
 
     // --- THE ULTIMATE DRAG SHIELD LOGIC ---

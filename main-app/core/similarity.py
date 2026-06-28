@@ -8,7 +8,7 @@ UNIT_MULTIPLIERS = {
     # Voltage (Base: Volts)
     "kv": 1e3, "v": 1.0, "mv": 1e-3, "uv": 1e-6, "µv": 1e-6,
     # Resistance (Base: Ohms)
-    "mΩ": 1e6, "mohm": 1e6, "kΩ": 1e3, "kohm": 1e3, "Ω": 1.0, "ohm": 1.0, "mΩ": 1e-3, 
+    "gΩ": 1e9, "megaohm": 1e6, "MΩ": 1e6, "kΩ": 1e3, "kohm": 1e3, "Ω": 1.0, "ohm": 1.0, "mΩ": 1e-3, "mohm": 1e-3,
     # Frequency (Base: Hertz)
     "ghz": 1e9, "mhz": 1e6, "khz": 1e3, "hz": 1.0,
     # Power (Base: Watts)
