@@ -46,6 +46,7 @@ class RerankRequest(BaseModel):
 class ReformulateRequest(BaseModel):
     query: str
     chat_history: List[Dict[str, Any]]
+    active_file: str = None
 
 class RouteIntentRequest(BaseModel):
     query: str
@@ -108,7 +109,8 @@ def reformulate_endpoint(request: ReformulateRequest):
     try:
         query = reformulate_query(
             query=request.query,
-            chat_history=request.chat_history
+            chat_history=request.chat_history,
+            active_file=request.active_file
         )
         return {"query": query}
     except Exception as e:

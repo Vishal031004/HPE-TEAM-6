@@ -11,7 +11,8 @@ load_dotenv()
 # Ensure the core/llm directory is in the import path
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
-from llm import generate_text, generate_from_image, get_embeddings
+from llm import generate_text, generate_from_image, get_embeddings, generate_text_stream
+from fastapi.responses import StreamingResponse
 
 app = FastAPI(
     title="HPE Component LLM Microservice",
@@ -29,6 +30,11 @@ class GenerateTextRequest(BaseModel):
     temperature: float = 0.0
     tools: Optional[List[Dict[str, Any]]] = None
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None
+
+class StreamRequest(BaseModel):
+    messages: List[Dict[str, Any]]
+    model: str = "gpt-4o"
+    temperature: float = 0.2
 
 class GenerateFromImageRequest(BaseModel):
     prompt: str
@@ -63,6 +69,23 @@ def generate_text_endpoint(request: GenerateTextRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/llm/stream")
+def stream_text_endpoint(request: StreamRequest):
+    """SSE streaming endpoint — streams tokens as they arrive from OpenAI."""
+    import json
+    def event_generator():
+        for token in generate_text_stream(
+            messages=request.messages,
+            model=request.model,
+            temperature=request.temperature
+        ):
+            # SSE format: each event is "data: <content>\n\n"
+            # JSON-encode to preserve newlines across the stream
+            yield f"data: {json.dumps(token)}\n\n"
+        yield "data: [DONE]\n\n"
+    
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.post("/api/llm/generate_from_image")
 def generate_from_image_endpoint(request: GenerateFromImageRequest):

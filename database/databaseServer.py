@@ -12,6 +12,7 @@ from database import (
     register_user, login_user, add_user_pdf, get_user_pdfs, get_user_pdf_hashes,
     create_chat_session, get_user_sessions, attach_pdf_to_session, get_session_data,
     save_session_messages, delete_chat_session, rename_chat_session, toggle_pin_session,
+    detach_pdf_from_session,
     get_cached_pdf_extraction, save_pdf_extraction, get_digikey_token_lazy,
     get_or_build_component_data, has_rag_chunks, store_rag_chunks, retrieve_rag_context
 )
@@ -37,6 +38,10 @@ class SessionCreateRequest(BaseModel):
     session_name: str
 
 class SessionAttachRequest(BaseModel):
+    session_id: str
+    pdf_hash: str
+
+class SessionDetachRequest(BaseModel):
     session_id: str
     pdf_hash: str
 
@@ -70,6 +75,11 @@ class RetrieveRagContextRequest(BaseModel):
 @app.get("/")
 def test():
     return {"message": "Database Microservice is up and running!"}
+
+# RAG Endpoints
+@app.get("/api/chunks/check/{pdf_hash}")
+def check_rag_chunks(pdf_hash: str):
+    return {"has_chunks": has_rag_chunks(pdf_hash)}
 
 # User Management Endpoints
 @app.post("/api/register")
@@ -155,6 +165,13 @@ def pin_session(session_id: str):
     success = toggle_pin_session(session_id)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to toggle pin session")
+    return {"status": "success"}
+
+@app.post("/api/sessions/detach")
+def detach_pdf(request: SessionDetachRequest):
+    success = detach_pdf_from_session(request.session_id, request.pdf_hash)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to detach PDF from session")
     return {"status": "success"}
 
 # Spec Extraction Cache Endpoints

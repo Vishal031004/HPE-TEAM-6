@@ -25,12 +25,18 @@ MONGO_DB = "datasheet_hpe"
 
 LLM_SERVER_URL = os.environ.get("LLM_SERVER_URL", "http://127.0.0.1:8086")
 
+# Module-level singleton: MongoClient has built-in connection pooling.
+# Creating it once at import time avoids opening a new TCP/TLS connection on every call.
+_mongo_client = None
+
 def _get_db():
+    global _mongo_client
     if not MONGO_URI:
         print("❌ MONGO_URI missing from .env file!")
         return None
-    client = pymongo.MongoClient(MONGO_URI)
-    return client[MONGO_DB]
+    if _mongo_client is None:
+        _mongo_client = pymongo.MongoClient(MONGO_URI)
+    return _mongo_client[MONGO_DB]
 
 # ========================================================================
 # ENGINE 0: USER MANAGEMENT
@@ -180,6 +186,20 @@ def toggle_pin_session(session_id: str):
     )
     return result.modified_count > 0
 
+def detach_pdf_from_session(session_id: str, pdf_hash: str):
+    """Removes a PDF from a workspace's attached_pdfs list."""
+    db = _get_db()
+    if db is None: return False
+    
+    result = db["chat_sessions"].update_one(
+        {"session_id": session_id},
+        {
+            "$pull": {"attached_pdfs": pdf_hash},
+            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+        }
+    )
+    return result.modified_count > 0
+
 # ========================================================================
 # ENGINE A: MATH / MARKET DATABASE LOGIC 
 # ========================================================================
@@ -207,7 +227,15 @@ def save_pdf_extraction(pdf_sha256: str, filename: str, detected_type: str, extr
         upsert=True,
     )
 
+# Cached DigiKey token (valid for 30 min, we refresh at 25 min to be safe)
+_digikey_token_cache = {"token": None, "expires_at": 0}
+
 def get_digikey_token_lazy():
+    import time as _time
+    now = _time.time()
+    if _digikey_token_cache["token"] and now < _digikey_token_cache["expires_at"]:
+        return _digikey_token_cache["token"]
+    
     resp = requests.post(
         "https://api.digikey.com/v1/oauth2/token",
         data={
@@ -218,7 +246,13 @@ def get_digikey_token_lazy():
         headers={"Content-Type": "application/x-www-form-urlencoded"}
     )
     resp.raise_for_status()
-    return resp.json()["access_token"]
+    resp_data = resp.json()
+    token = resp_data["access_token"]
+    expires_in = int(resp_data.get("expires_in", 300))
+    _digikey_token_cache["token"] = token
+    # Cache for slightly less than the actual expiration time to be safe
+    _digikey_token_cache["expires_at"] = _time.time() + max(0, expires_in - 30)
+    return token
 
 def get_or_build_component_data(component_type):
     db = _get_db()

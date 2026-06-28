@@ -444,7 +444,7 @@ def rerank_chunks_cross_encoder(query: str, chunks: List[Dict], top_k: int = 5) 
         print(f"⚠️ Cross-encoder reranking failed: {e}")
         return chunks[:top_k]
     
-def reformulate_query(query: str, chat_history: List[Dict]) -> str:
+def reformulate_query(query: str, chat_history: List[Dict], active_file: str = None) -> str:
     """
     Step 0: Translates conversational queries with pronouns/references into 
     standalone search queries using the chat history.
@@ -452,18 +452,23 @@ def reformulate_query(query: str, chat_history: List[Dict]) -> str:
     if not chat_history:
         return query
 
+    active_file_instruction = ""
+    if active_file:
+        active_file_instruction = f"CRITICAL: The user most recently interacted with the file '{active_file}'. If they use pronouns like 'it', 'this component', or 'the datasheet', you MUST resolve those pronouns to '{active_file}' and NOT any component from the previous chat history.\n"
+
     system_msg = (
         "Given the following conversation history and the user's next question, "
         "rephrase the user's question to be a standalone search query that contains all "
         "the necessary context. Replace pronouns like 'it', 'those', or references like 'the second feature' "
-        "with the actual technical subject from the history.\n"
+        "with the actual technical subject.\n"
+        f"{active_file_instruction}"
         "If the question is already standalone, return it exactly as is.\n"
         "Output ONLY the rephrased query, nothing else."
     )
 
-    # Build memory context (we only need the last few messages to get the context)
+    # Build memory context (we need enough history to resolve deep pronoun chains)
     messages = [{"role": "system", "content": system_msg}]
-    for msg in chat_history[-4:]: 
+    for msg in chat_history[-8:]: 
         safe_content = msg.get("content") or ""
         messages.append({"role": msg.get("role", "user"), "content": safe_content})
         
@@ -499,8 +504,8 @@ def route_user_intent(query: str, chat_history: List[Dict]) -> str:
     
     messages = [{"role": "system", "content": system_msg}]
     if chat_history:
-        # We only need the last couple of messages for intent context
-        for msg in chat_history[-2:]: 
+        # We need enough history for the agent to resolve pronouns like "it" to the previously discussed file
+        for msg in chat_history[-8:]: 
             messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
             
     messages.append({"role": "user", "content": query})
@@ -596,7 +601,8 @@ def answer_rag_question(query: str, retrieved_chunks: List[Dict], chat_history: 
     # 3. Assemble message payload with conversational memory structures
     messages = [{"role": "system", "content": system_prompt}]
     if chat_history:
-        for msg in chat_history:
+        # Bound the chat history to the last 10 messages to prevent LLM context bloat & hallucination
+        for msg in chat_history[-10:]:
             # FIX: If content is explicitly None/null, force it to an empty string safely
             safe_content = msg.get("content") or ""
             messages.append({"role": msg.get("role", "user"), "content": safe_content})

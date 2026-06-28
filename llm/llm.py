@@ -149,3 +149,24 @@ def get_embeddings(
         return response.data[0].embedding
     else:
         return [r.embedding for r in response.data]
+
+def generate_text_stream(
+    messages: List[Dict[str, Any]],
+    model: str = "gpt-4o",
+    temperature: float = 0.2
+):
+    """Streams text completion tokens as they arrive from OpenAI.
+    Yields plain text chunks (not JSON). Used for SSE streaming to the frontend."""
+    try:
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            stream=True
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield delta.content
+    except Exception as e:
+        yield f"\n\n[Error: {str(e)}]"
