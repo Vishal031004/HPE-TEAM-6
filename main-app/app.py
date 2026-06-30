@@ -373,7 +373,7 @@ def run_agentic_chat_loop(request, max_iterations=5):
         "You have access to several tools. Use them to answer the user's request. "
         "1. If they ask about technical specs, search datasheets, use `search_datasheets`.\n"
         "2. If they ask about the current workspace, uploaded files, or metadata, use `get_workspace_metadata`.\n"
-        "3. If they ask about live market pricing or stock, use `fetch_live_pricing`.\n"
+        "3. If they ask about live market pricing or stock, use `fetch_live_pricing`. If the user provides a filename (e.g. 'ADXRS453.pdf'), strip the extension and use the base part number (e.g. 'ADXRS453') for the tool.\n"
         "If a tool doesn't return enough info, you can call it again with different parameters or try another tool."
     )
     
@@ -810,6 +810,14 @@ async def chat_stream(request: ChatRequest):
     All chat queries go through here as pure information retrieval.
     Find Alternatives is handled by the dedicated /api/find_alternatives endpoint."""
     from fastapi.responses import StreamingResponse
+    
+    # 1. Intent Routing
+    intent = route_user_intent(request.question, request.chat_history)
+    print(f"\n🧠 [AGENT ROUTER] Detected Intent: {intent.upper()}")
+    
+    if intent == "fetch_pricing":
+        answer = run_agentic_chat_loop(request)
+        return {"answer": answer}
     
     # Build the RAG context, then stream the LLM response
     reformulated = reformulate_query(request.question, request.chat_history, request.active_file)

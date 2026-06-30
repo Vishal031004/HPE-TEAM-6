@@ -496,9 +496,10 @@ def route_user_intent(query: str, chat_history: List[Dict]) -> str:
     """
     system_msg = (
         "You are an intent classification routing AI. Analyze the user's latest message.\n"
-        "Classify the user's intent into exactly one of these two categories:\n"
+        "Classify the user's intent into exactly one of these categories:\n"
         "1. 'find_alternatives': The user is explicitly asking to find NEW external alternatives on the open market, search DigiKey, or find cheaper replacements.\n"
-        "2. 'information_retrieval': The user is asking to summarize, compare, or explain the datasheets ALREADY uploaded in the chat. (e.g., 'compare these two', 'how is this different from the other one', 'what is the max temp').\n\n"
+        "2. 'fetch_pricing': The user is explicitly asking for live market pricing, stock, cost, or availability for a specific component from DigiKey.\n"
+        "3. 'information_retrieval': The user is asking to summarize, compare, or explain the datasheets ALREADY uploaded in the chat. (e.g., 'compare these two', 'how is this different from the other one', 'what is the max temp').\n\n"
         "Output ONLY the category name as a raw string."
     )
     
@@ -523,6 +524,8 @@ def route_user_intent(query: str, chat_history: List[Dict]) -> str:
         intent = res.json()["content"].lower()
         if "find_alternatives" in intent:
             return "find_alternatives"
+        if "fetch_pricing" in intent:
+            return "fetch_pricing"
         return "information_retrieval"
     except Exception as e:
         print(f"⚠️ Intent routing failed: {e}")
