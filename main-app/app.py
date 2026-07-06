@@ -568,6 +568,10 @@ class SaveMessagesRequest(BaseModel):
 class RenameRequest(BaseModel):
     new_name: str
 
+def _safe_error_message(prefix: str, exc: Exception) -> str:
+    message = str(exc).strip()
+    return f"{prefix}: {message}" if message else prefix
+
 def _run_rag_ingestion(file_path: str, filename: str, pdf_sha: str):
     try:
         if not has_rag_chunks(pdf_sha):
@@ -618,11 +622,17 @@ async def upload_pdf(
     """LAZY UPLOAD: Only saves the file, generates the hash, and triggers background RAG."""
     os.makedirs(DATASHEETS_DIR, exist_ok=True)
     file_path = os.path.join(DATASHEETS_DIR, file.filename)
-    
-    with open(file_path, "wb") as f:
-        f.write(await file.read())
-        
-    pdf_sha = pdf_hash(file_path)
+
+    try:
+        with open(file_path, "wb") as f:
+            f.write(await file.read())
+    except OSError as exc:
+        return {"error": _safe_error_message("Could not save the uploaded PDF", exc)}
+
+    try:
+        pdf_sha = pdf_hash(file_path)
+    except Exception as exc:
+        return {"error": _safe_error_message("Could not process the uploaded PDF", exc)}
 
     # 1. Attach to user library
     if user_id:

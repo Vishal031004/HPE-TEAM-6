@@ -105,3 +105,4 @@ Description: REST URL of the PDF Processor Service
 [!IMPORTANT]
 **Shared File System Alignment:**  
 The `DATASHEETS_DIR` variable must point to the same directory on your machine (Option A) or target the same mounted persistent volume in a containerized setup (Option B). If these do not align, the `pdf_processor` will throw a `500 FileNotFoundError` when trying to open files uploaded by `main-app`.
+
