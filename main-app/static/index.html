@@ -1,339 +1,1021 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Hardware Components Assistant</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap"
+    rel="stylesheet" />
   <style>
     :root {
-      --bg: #0d0f14; --surface: #141820; --surface2: #1c2230;
-      --border: #2a3348; --accent: #00e5b0; --accent2: #0099ff;
-      --warn: #ffb800; --danger: #ff4d6a; --text: #e2e8f0;
-      --muted: #6b7a99; --mono: 'IBM Plex Mono', monospace;
-      --sans: 'IBM Plex Sans', sans-serif; --radius: 8px;
+      --bg: #0d0f14;
+      --surface: #141820;
+      --surface2: #1c2230;
+      --border: #2a3348;
+      --accent: #00e5b0;
+      --accent2: #0099ff;
+      --warn: #ffb800;
+      --danger: #ff4d6a;
+      --text: #e2e8f0;
+      --muted: #6b7a99;
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'IBM Plex Sans', sans-serif;
+      --radius: 8px;
     }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: var(--bg); }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-    
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+
     body {
-      background: var(--bg); color: var(--text); font-family: var(--sans);
-      font-size: 14px; line-height: 1.6; height: 100vh; display: flex;
-      flex-direction: column; overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.6;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
     /* Common Buttons */
-    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--accent); color: #000; font-family: var(--mono); font-size: 13px; font-weight: 600; border: none; border-radius: 4px; padding: 10px 20px; cursor: pointer; transition: 0.2s; }
-    .btn:hover:not(:disabled) { opacity: 0.88; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-    .btn-outline:hover:not(:disabled) { border-color: var(--accent2); color: var(--accent2); }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #000;
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      border-radius: 4px;
+      padding: 10px 20px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .btn:hover:not(:disabled) {
+      opacity: 0.88;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .btn-outline:hover:not(:disabled) {
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
 
     /* Auth View */
-    #view-auth { display: flex; flex: 1; align-items: center; justify-content: center; }
-    .auth-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; width: 100%; max-width: 400px; }
-    .auth-box h2 { font-family: var(--mono); margin-bottom: 24px; text-align: center; color: var(--accent); }
-    .auth-input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 12px; border-radius: 4px; margin-bottom: 16px; font-family: var(--sans); outline: none; }
-    .auth-toggle { text-align: center; margin-top: 16px; font-size: 13px; color: var(--muted); cursor: pointer; }
+    #view-auth {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .auth-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .auth-box h2 {
+      font-family: var(--mono);
+      margin-bottom: 24px;
+      text-align: center;
+      color: var(--accent);
+    }
+
+    .auth-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+      font-family: var(--sans);
+      outline: none;
+    }
+
+    .auth-toggle {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--muted);
+      cursor: pointer;
+    }
 
     /* App Layout (Sidebar + Main) */
-    #view-app { display: none; flex: 1; height: 100vh; overflow: hidden; }
-    
+    #view-app {
+      display: none;
+      flex: 1;
+      height: 100vh;
+      overflow: hidden;
+    }
+
     /* Sidebar */
-    .sidebar { width: 280px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 16px; flex-shrink: 0; }
-    .logo-area { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-    .logo-icon { width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(135deg, var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; font-size: 14px; }
-    .logo-area h1 { font-family: var(--mono); font-size: 14px; color: var(--text); margin: 0; }
-    .session-list { flex: 1; overflow-y: auto; margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .sidebar {
+      width: 280px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      flex-shrink: 0;
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .logo-area h1 {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text);
+      margin: 0;
+    }
+
+    .session-list {
+      flex: 1;
+      overflow-y: auto;
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
     /* 1. Base style for all items */
-    .session-item { 
-      display: flex; 
-      justify-content: space-between; 
-      align-items: center; 
-      padding: 10px 12px; 
+    .session-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
       position: relative;
-      border: 1px solid transparent; 
+      border: 1px solid transparent;
       border-radius: 6px;
       background: transparent;
       transition: border-color 0.2s, color 0.2s;
     }
 
     /* 2. Hover state: Only apply if it's NOT the active item */
-    .session-item:hover { 
-      border: 1px solid var(--border); 
-      color: var(--text); 
+    .session-item:hover {
+      border: 1px solid var(--border);
+      color: var(--text);
     }
-    .session-item.active { 
-      border: 1px solid var(--accent) !important; 
-      background: transparent !important; 
-      color: var(--accent) !important; 
+
+    .session-item.active {
+      border: 1px solid var(--accent) !important;
+      background: transparent !important;
+      color: var(--accent) !important;
     }
-    .session-item:hover:not(.active) { 
-      background: var(--surface2); 
-      color: var(--text); 
+
+    .session-item:hover:not(.active) {
+      background: var(--surface2);
+      color: var(--text);
     }
-    .session-item.active { 
-      background: var(--surface2) !important; 
-      border: 1px solid var(--border) !important; 
-      color: var(--accent) !important; 
-      border-left: 3px solid var(--accent) !important; 
+
+    .session-item.active {
+      background: var(--surface2) !important;
+      border: 1px solid var(--border) !important;
+      color: var(--accent) !important;
+      border-left: 3px solid var(--accent) !important;
     }
-    .user-controls { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); }
-    .logout-btn { color: var(--danger); background: none; border: none; cursor: pointer; font-family: var(--mono); font-size: 12px; width: 100%; text-align: left; padding: 8px; }
+
+    .user-controls {
+      margin-top: auto;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .logout-btn {
+      color: var(--danger);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 12px;
+      width: 100%;
+      text-align: left;
+      padding: 8px;
+    }
 
     /* Main Workspace */
-    .main-workspace { flex: 1; display: flex; flex-direction: column; background: var(--bg); position: relative; }
-    
-    .workspace-header { padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; justify-content: space-between; align-items: center; }
-    .session-title { font-family: var(--mono); font-size: 16px; color: var(--text); }
-    .attached-pdfs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-    .pdf-pill { 
-      background: var(--surface2); 
-      border: 1px solid var(--border); 
-      padding: 4px 10px; 
-      border-radius: 12px; 
-      font-size: 11px; 
-      font-family: var(--mono); 
-      color: var(--accent2); 
-      text-decoration: none; 
-      cursor: pointer; 
-      transition: 0.2s; 
-      display: inline-flex; 
-      align-items: center; 
+    .main-workspace {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      position: relative;
     }
-    .pdf-pill:hover { 
-      border-color: var(--accent2); 
-      background: rgba(0, 153, 255, 0.1); 
+
+    .workspace-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
+
+    .session-title {
+      font-family: var(--mono);
+      font-size: 16px;
+      color: var(--text);
+    }
+
+    .attached-pdfs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .pdf-pill {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--accent2);
+      text-decoration: none;
+      cursor: pointer;
+      transition: 0.2s;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .pdf-pill:hover {
+      border-color: var(--accent2);
+      background: rgba(0, 153, 255, 0.1);
+    }
+
     /* Chat Area */
-    .chat-container { 
-      flex: 1; 
-      overflow-y: auto; 
-      padding: 32px 5%; /* Uses percentages to gracefully scale with your monitor width */
-      display: flex; 
-      flex-direction: column; 
-      gap: 24px; 
-      width: 100%; 
+    .chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px 5%;
+      /* Uses percentages to gracefully scale with your monitor width */
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      width: 100%;
       /* Removed max-width: 900px and margin: 0 auto */
     }
-    
-    .msg-row { display: flex; width: 100%; }
-    .msg-row.user { justify-content: flex-end; }
-    
-    .bubble { padding: 20px 24px; border-radius: 12px; max-width: 85%; line-height: 1.6; }
-    .msg-row.system .bubble { background: var(--surface); border: 1px solid var(--border); }
-    .msg-row.user .bubble { background: var(--surface2); border: 1px solid var(--accent2); }
+
+    .msg-row {
+      display: flex;
+      width: 100%;
+    }
+
+    .msg-row.user {
+      justify-content: flex-end;
+    }
+
+    .bubble {
+      padding: 20px 24px;
+      border-radius: 12px;
+      max-width: 85%;
+      line-height: 1.6;
+    }
+
+    .msg-row.system .bubble {
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+
+    .msg-row.user .bubble {
+      background: var(--surface2);
+      border: 1px solid var(--accent2);
+    }
 
     /* Fix Markdown paragraph spacing inside the system bubble */
-    .bubble-content p { margin-bottom: 12px; }
-    .bubble-content p:last-child { margin-bottom: 0; }
+    .bubble-content p {
+      margin-bottom: 12px;
+    }
+
+    .bubble-content p:last-child {
+      margin-bottom: 0;
+    }
 
     /* Input Area */
-    .chat-input-wrapper { background: var(--surface); border-top: 1px solid var(--border); padding: 16px 24px; display: flex; justify-content: center; flex-shrink: 0; }
-    .chat-input-inner { 
-      display: flex; 
-      gap: 12px; 
-      width: 100%; 
-      padding: 0 5%; /* Matches the padding of the chat container above */
-      align-items: center; 
+    .chat-input-wrapper {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .chat-input-inner {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      padding: 0 5%;
+      /* Matches the padding of the chat container above */
+      align-items: center;
       /* Removed max-width: 900px */
     }
+
     /* ChatGPT-style Input Stack & Quote Preview */
     .input-stack {
-      flex: 1; 
-      display: flex; 
-      flex-direction: column; 
+      flex: 1;
+      display: flex;
+      flex-direction: column;
       background: var(--bg);
-      border: 1px solid var(--border); 
-      border-radius: var(--radius); 
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       transition: border-color 0.2s;
-      overflow: hidden; 
+      overflow: hidden;
     }
-    .input-stack:focus-within { border-color: var(--accent); }
-    
+
+    .input-stack:focus-within {
+      border-color: var(--accent);
+    }
+
     .quote-preview {
-      display: none; align-items: center; justify-content: space-between;
-      padding: 8px 12px; background: var(--surface2); border-bottom: 1px solid var(--border);
-      border-top-left-radius: var(--radius); border-top-right-radius: var(--radius);
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      border-top-left-radius: var(--radius);
+      border-top-right-radius: var(--radius);
     }
+
     .quote-preview-text {
-      font-family: var(--sans); font-size: 12px; color: var(--muted);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-style: italic; max-width: 95%;
+      font-family: var(--sans);
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-style: italic;
+      max-width: 95%;
     }
-    .quote-close-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
-    .quote-close-btn:hover { color: var(--danger); }
+
+    .quote-close-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0 4px;
+    }
+
+    .quote-close-btn:hover {
+      color: var(--danger);
+    }
 
     /* Updated input to sit cleanly inside the stack */
-    .chat-input { 
-      background: transparent; border: none; color: var(--text); 
-      padding: 14px 16px; font-family: var(--sans); outline: none; width: 100%;
+    .chat-input {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      padding: 14px 16px;
+      font-family: var(--sans);
+      outline: none;
+      width: 100%;
     }
-    
-    .file-upload-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 14px; border-radius: var(--radius); cursor: pointer; transition: 0.2s; }
-    .file-upload-btn:hover { color: var(--accent); border-color: var(--accent); }
-    .citation-badge { background: rgba(0, 153, 255, 0.15); color: var(--accent2); font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0, 153, 255, 0.3); margin: 0 4px; }
+
+    .file-upload-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 14px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .file-upload-btn:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .citation-badge {
+      background: rgba(0, 153, 255, 0.15);
+      color: var(--accent2);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 153, 255, 0.3);
+      margin: 0 4px;
+    }
 
     /* --- MATH SLIDERS & PRICING UI (Restored) --- */
-    .weight-panel { margin-top: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 24px; }
-    .weight-row { display: grid; grid-template-columns: 2.5fr 1.5fr 100px 40px 30px; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
-    .spec-name { font-family: var(--mono); font-size: 13px; color: var(--text); }
-    .spec-val { font-size: 13px; color: var(--accent2); font-family: var(--mono); }
-    input[type=range] { accent-color: var(--accent); width: 100%; cursor: pointer; margin: 0; }
-    .weight-val { font-family: var(--mono); text-align: right; color: var(--warn); font-size: 13px; }
-    
-    .btn-remove, .btn-add { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 4px; cursor: pointer; width: 24px; height: 24px; font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; transition: 0.2s; }
-    .btn-remove:hover { border-color: var(--danger); color: var(--danger); }
-    .btn-add:hover { border-color: var(--accent); color: var(--accent); }
-    .add-feature-bar { display: flex; align-items: center; gap: 10px; padding: 12px 0; }
-    .add-feature-bar select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-family: var(--mono); font-size: 12px; max-width: 200px; }
+    .weight-panel {
+      margin-top: 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 24px;
+    }
 
-    .part-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 16px; }
-    .part-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-    .mpn { font-family: var(--mono); font-size: 16px; font-weight: 600; color: var(--accent); }
-    .score-badge { background: rgba(0, 229, 176, 0.1); color: var(--accent); padding: 4px 10px; border-radius: 4px; font-family: var(--mono); font-weight: 600; }
-    .spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-    .spec-item { background: var(--surface2); padding: 8px 12px; border-radius: 4px; font-size: 12px; font-family: var(--mono); border: 1px solid var(--border); }
-    
-    .pricing-row { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
-    .pricing-badge { font-family: var(--mono); font-size: 12px; padding: 6px 12px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; }
-    .badge-price { background: rgba(0, 153, 255, 0.12); color: var(--accent2); border: 1px solid rgba(0, 153, 255, 0.3); }
-    .badge-stock { border: 1px solid; }
-    .badge-stock.in-stock { background: rgba(0, 229, 176, 0.1); color: var(--accent); border-color: rgba(0, 229, 176, 0.3); }
-    .badge-stock.low-stock { background: rgba(255, 184, 0, 0.1); color: var(--warn); border-color: rgba(255, 184, 0, 0.3); }
-    .badge-stock.no-stock { background: rgba(255, 77, 106, 0.1); color: var(--danger); border-color: rgba(255, 77, 106, 0.3); }
-    .pricing-loading { font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 6px 0; }
+    .weight-row {
+      display: grid;
+      grid-template-columns: 2.5fr 1.5fr 100px 40px 30px;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
 
-    .card-actions { display: flex; gap: 12px; margin-top: 16px; }
-    .card-actions a { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
-    .btn-datasheet { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
-    .btn-datasheet:hover { border-color: var(--accent2); color: var(--accent2); }
-    .btn-buy { background: var(--danger); border: 1px solid var(--danger); color: #fff; }
-    .btn-buy:hover { opacity: 0.85; }
+    .spec-name {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text);
+    }
 
-    .sort-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-family: var(--mono); font-size: 12px; padding: 6px 14px; border-radius: 6px; cursor: pointer; transition: background 0.2s, border-color 0.2s, color 0.2s; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
-    .sort-btn:hover { background: var(--surface); border-color: var(--accent); color: var(--accent); }
+    .spec-val {
+      font-size: 13px;
+      color: var(--accent2);
+      font-family: var(--mono);
+    }
+
+    input[type=range] {
+      accent-color: var(--accent);
+      width: 100%;
+      cursor: pointer;
+      margin: 0;
+    }
+
+    .weight-val {
+      font-family: var(--mono);
+      text-align: right;
+      color: var(--warn);
+      font-size: 13px;
+    }
+
+    .btn-remove,
+    .btn-add {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 4px;
+      cursor: pointer;
+      width: 24px;
+      height: 24px;
+      font-size: 14px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      transition: 0.2s;
+    }
+
+    .btn-remove:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .btn-add:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .add-feature-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 0;
+    }
+
+    .add-feature-bar select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-family: var(--mono);
+      font-size: 12px;
+      max-width: 200px;
+    }
+
+    .part-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-top: 16px;
+    }
+
+    .part-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .mpn {
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .score-badge {
+      background: rgba(0, 229, 176, 0.1);
+      color: var(--accent);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-weight: 600;
+    }
+
+    .spec-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .spec-item {
+      background: var(--surface2);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: var(--mono);
+      border: 1px solid var(--border);
+    }
+
+    .pricing-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .pricing-badge {
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge-price {
+      background: rgba(0, 153, 255, 0.12);
+      color: var(--accent2);
+      border: 1px solid rgba(0, 153, 255, 0.3);
+    }
+
+    .badge-stock {
+      border: 1px solid;
+    }
+
+    .badge-stock.in-stock {
+      background: rgba(0, 229, 176, 0.1);
+      color: var(--accent);
+      border-color: rgba(0, 229, 176, 0.3);
+    }
+
+    .badge-stock.low-stock {
+      background: rgba(255, 184, 0, 0.1);
+      color: var(--warn);
+      border-color: rgba(255, 184, 0, 0.3);
+    }
+
+    .badge-stock.no-stock {
+      background: rgba(255, 77, 106, 0.1);
+      color: var(--danger);
+      border-color: rgba(255, 77, 106, 0.3);
+    }
+
+    .pricing-loading {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      padding: 6px 0;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .card-actions a {
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .btn-datasheet {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .btn-datasheet:hover {
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
+
+    .btn-buy {
+      background: var(--danger);
+      border: 1px solid var(--danger);
+      color: #fff;
+    }
+
+    .btn-buy:hover {
+      opacity: 0.85;
+    }
+
+    .sort-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .sort-btn:hover {
+      background: var(--surface);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
 
     /* Sidebar Kebab Menu & Pinning */
-    .session-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; position: relative; }
-    .session-title-text { flex: 1; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
-    .pin-icon { color: var(--accent); font-size: 12px; }
-    
-    .kebab-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 2px 8px; border-radius: 4px; font-size: 16px; display: none; }
-    .session-item:hover .kebab-btn, .dropdown-menu.show ~ .kebab-btn { 
-      display: block; 
+    .session-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      position: relative;
     }
-    .kebab-btn:hover { background: var(--surface); color: var(--text); }
-    
+
+    .session-title-text {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pin-icon {
+      color: var(--accent);
+      font-size: 12px;
+    }
+
+    .kebab-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 16px;
+      display: none;
+    }
+
+    .session-item:hover .kebab-btn,
+    .dropdown-menu.show~.kebab-btn {
+      display: block;
+    }
+
+    .kebab-btn:hover {
+      background: var(--surface);
+      color: var(--text);
+    }
+
     /* Bulletproof Dropdown Menu */
-    .dropdown-menu { 
-      display: none; 
-      position: fixed; /* Escapes the sidebar container entirely! */
-      background: var(--surface2); 
-      border: 1px solid var(--border); 
-      border-radius: 6px; 
-      padding: 4px; 
-      box-shadow: 0 4px 12px rgba(0,0,0,0.8); 
-      z-index: 9999; /* Forces it above EVERYTHING */
-      flex-direction: column; 
-      gap: 2px; 
-      min-width: 110px; 
+    .dropdown-menu {
+      display: none;
+      position: fixed;
+      /* Escapes the sidebar container entirely! */
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+      z-index: 9999;
+      /* Forces it above EVERYTHING */
+      flex-direction: column;
+      gap: 2px;
+      min-width: 110px;
     }
-    .dropdown-menu.show { display: flex; }
-    .dropdown-btn { background: none; border: none; color: var(--text); text-align: left; padding: 6px 12px; font-family: var(--sans); font-size: 12px; cursor: pointer; border-radius: 4px; display: flex; justify-content: space-between; }
-    .dropdown-btn:hover { background: var(--surface); }
-    .dropdown-btn.delete { color: var(--danger); }
-    .dropdown-btn.delete:hover { background: rgba(255, 77, 106, 0.1); }
+
+    .dropdown-menu.show {
+      display: flex;
+    }
+
+    .dropdown-btn {
+      background: none;
+      border: none;
+      color: var(--text);
+      text-align: left;
+      padding: 6px 12px;
+      font-family: var(--sans);
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .dropdown-btn:hover {
+      background: var(--surface);
+    }
+
+    .dropdown-btn.delete {
+      color: var(--danger);
+    }
+
+    .dropdown-btn.delete:hover {
+      background: rgba(255, 77, 106, 0.1);
+    }
 
     /* GPT-Style Floating Text Selection Tooltip */
-    #selection-tooltip { position: absolute; display: none; background: var(--surface2); border: 1px solid var(--accent); color: var(--accent); font-family: var(--mono); font-size: 11px; padding: 6px 12px; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 1000; transition: background 0.2s, color 0.2s; }
-    #selection-tooltip:hover { background: var(--accent); color: #000; }
+    #selection-tooltip {
+      position: absolute;
+      display: none;
+      background: var(--surface2);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    #selection-tooltip:hover {
+      background: var(--accent);
+      color: #000;
+    }
 
     /* Drag & Drop Visual Cue */
-    .main-workspace { transition: border 0.2s, background 0.2s; }
+    .main-workspace {
+      transition: border 0.2s, background 0.2s;
+    }
+
     .main-workspace.drag-over {
       border: 2px dashed var(--accent);
-      background: rgba(0, 229, 176, 0.03); 
+      background: rgba(0, 229, 176, 0.03);
     }
 
     /* File Staging Area inside Input Stack */
-    .file-staging-area { 
-      display: flex; 
-      flex-wrap: wrap; 
-      gap: 10px; 
-      padding: 0 16px; 
+    .file-staging-area {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 0 16px;
     }
-    .file-staging-area:not(:empty) { 
-      padding-top: 12px; /* Adds space only when files are present */
+
+    .file-staging-area:not(:empty) {
+      padding-top: 12px;
+      /* Adds space only when files are present */
     }
-    
-    .staging-pill { 
-      display: flex; 
-      align-items: center; 
-      gap: 8px; 
-      background: var(--surface); 
-      border: 1px solid var(--border); 
-      padding: 8px 12px; 
-      border-radius: 8px; 
-      font-size: 12px; 
-      font-family: var(--sans); 
+
+    .staging-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-family: var(--sans);
       color: var(--text);
     }
+
     /* ChatGPT-style File Cards */
     .file-staging-area {
-      display: flex; flex-wrap: wrap; gap: 12px; padding: 0 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 0 16px;
     }
-    .file-staging-area:not(:empty) { padding-top: 12px; padding-bottom: 8px; }
+
+    .file-staging-area:not(:empty) {
+      padding-top: 12px;
+      padding-bottom: 8px;
+    }
 
     .file-card {
-      position: relative; display: flex; align-items: center;
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 12px; padding: 10px 14px; width: 220px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 14px;
+      width: 220px;
     }
+
     .file-icon-box {
-      width: 36px; height: 36px; background: #ef4444; border-radius: 8px; /* The classic red square */
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px; color: white; margin-right: 12px; flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      background: #ef4444;
+      border-radius: 8px;
+      /* The classic red square */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: white;
+      margin-right: 12px;
+      flex-shrink: 0;
     }
+
     .file-details {
-      display: flex; flex-direction: column; overflow: hidden; width: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      width: 100%;
     }
+
     .file-name {
-      font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--text);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 14px;
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-right: 14px;
     }
+
     .file-type {
-      font-family: var(--sans); font-size: 11px; color: var(--muted); margin-top: 2px;
+      font-family: var(--sans);
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
     }
+
     .file-remove-btn {
-      position: absolute; top: 10px; right: 10px; background: var(--surface); color: var(--text);
-      border: 1px solid var(--border); border-radius: 50%; width: 20px; height: 20px;
-      font-size: 10px; display: flex; align-items: center; justify-content: center;
-      cursor: pointer; padding: 0;
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
     }
-    .file-remove-btn:hover { background: var(--border); }
-    
-    .staging-close-btn { 
-      background: none; 
-      border: none; 
-      color: var(--muted); 
-      cursor: pointer; 
-      padding: 0; 
-      font-size: 14px; 
-      display: flex; 
+
+    .file-remove-btn:hover {
+      background: var(--border);
+    }
+
+    .staging-close-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0;
+      font-size: 14px;
+      display: flex;
       align-items: center;
     }
-    .staging-close-btn:hover { color: var(--danger); }
+
+    .staging-close-btn:hover {
+      color: var(--danger);
+    }
 
     #current-session-title {
       color: var(--accent);
     }
 
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      padding: 10px;
+      margin-bottom: 10px;
+
+      border-radius: 8px;
+    }
+
+    .avatar-circle {
+
+      width: 40px;
+      height: 40px;
+
+      border-radius: 50%;
+
+      background: var(--accent);
+
+      color: #000;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: bold;
+
+      flex-shrink: 0;
+    }
+
+    .user-info {
+
+      display: flex;
+      flex-direction: column;
+    }
+
+    .user-name {
+
+      color: var(--text);
+
+      font-size: 13px;
+
+      font-weight: 600;
+    }
   </style>
 </head>
+
 <body>
 
   <div id="view-auth">
@@ -348,60 +1030,83 @@
   </div>
 
   <div id="view-app">
-    
+
     <aside class="sidebar">
       <div class="logo-area">
         <div class="logo-icon">⚡</div>
         <h1>SpecFlow</h1>
       </div>
-      
-      <button class="btn btn-outline" style="width: 100%; margin-bottom: 8px;" onclick="createNewSession()">+ NEW WORKSPACE</button>
-      
+
+      <button class="btn btn-outline" style="width: 100%; margin-bottom: 8px;" onclick="createNewSession()">+ NEW
+        WORKSPACE</button>
+
       <div class="session-list" id="session-list"></div>
 
       <div class="user-controls">
-        <button class="logout-btn" onclick="logout()">LOGOUT</button>
+
+        <div class="user-profile">
+
+          <div id="initial-avatar" class="avatar-circle">
+            U
+          </div>
+
+          <div class="user-info">
+            <div id="username-display" class="user-name">
+              User
+            </div>
+          </div>
+
+        </div>
+
+        <button class="logout-btn" onclick="logout()">
+          LOGOUT
+        </button>
+
       </div>
     </aside>
 
     <main class="main-workspace">
-      
+
       <div class="workspace-header">
         <div style="display:flex; align-items:center; gap:16px;">
-          <h2 id="current-session-title" style="margin:0; font-size:22px; font-weight:600; color:var(--accent);">New Project</h2>
+          <h2 id="current-session-title" style="margin:0; font-size:22px; font-weight:600; color:var(--accent);">New
+            Project</h2>
         </div>
-        <div id="attached-pdfs-container" style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px;">
+        <div id="attached-pdfs-container"
+          style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px;">
         </div>
       </div>
 
       <div class="chat-container" id="chat-container"></div>
 
       <div class="chat-input-wrapper">
-      <div class="chat-input-inner">
-        
-        <label class="file-upload-btn" title="Upload Datasheet">
-          <input type="file" id="pdf-upload" accept="application/pdf" style="display:none;" onchange="uploadAttachedPdf(event)" multiple>
-          📎
-        </label>
+        <div class="chat-input-inner">
 
-        <div class="input-stack">
-          <div id="quote-preview" class="quote-preview">
-            <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
-              <span style="color:var(--muted); font-size: 14px;">↳</span>
-              <span id="quote-preview-text" class="quote-preview-text"></span>
+          <label class="file-upload-btn" title="Upload Datasheet">
+            <input type="file" id="pdf-upload" accept="application/pdf" style="display:none;"
+              onchange="uploadAttachedPdf(event)" multiple>
+            📎
+          </label>
+
+          <div class="input-stack">
+            <div id="quote-preview" class="quote-preview">
+              <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
+                <span style="color:var(--muted); font-size: 14px;">↳</span>
+                <span id="quote-preview-text" class="quote-preview-text"></span>
+              </div>
+              <button class="quote-close-btn" onclick="clearQuote()" title="Remove quote">✕</button>
             </div>
-            <button class="quote-close-btn" onclick="clearQuote()" title="Remove quote">✕</button>
+
+            <div id="file-staging-area" class="file-staging-area"></div>
+
+            <input type="text" id="chat-input" class="chat-input" placeholder="Ask a question..."
+              onkeypress="if(event.key === 'Enter') sendQuestion()">
           </div>
-          
-          <div id="file-staging-area" class="file-staging-area"></div>
 
-          <input type="text" id="chat-input" class="chat-input" placeholder="Ask a question..." onkeypress="if(event.key === 'Enter') sendQuestion()">
+          <button class="btn" id="send-btn" onclick="sendQuestion()" disabled>SEND</button>
+
         </div>
-
-        <button class="btn" id="send-btn" onclick="sendQuestion()" disabled>SEND</button>
-
       </div>
-    </div>
 
     </main>
   </div>
@@ -409,13 +1114,19 @@
   <div id="selection-tooltip" onmousedown="event.preventDefault(); triggerQueryFurther();">🔍 Ask about this</div>
 
   <!-- Find Alternatives Modal -->
-  <div id="find-alt-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
-    <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; width:400px; max-width:90%;">
+  <div id="find-alt-modal"
+    style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+    <div
+      style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; width:400px; max-width:90%;">
       <h3 style="margin-top:0; color:var(--accent); font-family:var(--mono);">Find Alternatives</h3>
-      <p style="font-size:13px; color:var(--muted); margin-bottom:16px;">Select a PDF to find market alternatives for its component.</p>
-      <div id="find-alt-modal-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:24px; max-height:300px; overflow-y:auto; font-family:var(--mono); font-size:13px;"></div>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:16px;">Select a PDF to find market alternatives for
+        its component.</p>
+      <div id="find-alt-modal-list"
+        style="display:flex; flex-direction:column; gap:10px; margin-bottom:24px; max-height:300px; overflow-y:auto; font-family:var(--mono); font-size:13px;">
+      </div>
       <div style="display:flex; justify-content:flex-end; gap:12px;">
-        <button class="btn btn-outline" style="padding:6px 12px;" onclick="document.getElementById('find-alt-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-outline" style="padding:6px 12px;"
+          onclick="document.getElementById('find-alt-modal').style.display='none'">Cancel</button>
         <button class="btn" style="padding:6px 12px;" onclick="executeFindAlternatives()">🔍 Analyze</button>
       </div>
     </div>
@@ -451,7 +1162,7 @@
     }
 
     function showAuth() { document.getElementById('view-auth').style.display = 'flex'; document.getElementById('view-app').style.display = 'none'; }
-    function showApp() { document.getElementById('view-auth').style.display = 'none'; document.getElementById('view-app').style.display = 'flex'; loadSidebarSessions(); }
+    function showApp() { updateUserProfile(); document.getElementById('view-auth').style.display = 'none'; document.getElementById('view-app').style.display = 'flex'; loadSidebarSessions(); }
 
     // --- AUTHENTICATION ---
     function toggleAuthMode() {
@@ -465,16 +1176,48 @@
     async function handleAuth() {
       const u = document.getElementById('auth-user').value; const p = document.getElementById('auth-pass').value;
       const endpoint = isRegisterMode ? '/api/register' : '/api/login';
-      const res = await fetch(endpoint, { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({username: u, password: p}) });
+      const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: u, password: p }) });
       const data = await res.json();
-      if (data.error) { document.getElementById('auth-msg').innerText = data.error; } 
+      if (data.error) { document.getElementById('auth-msg').innerText = data.error; }
       else {
-        if (isRegisterMode) { toggleAuthMode(); document.getElementById('auth-msg').innerText = "Registration successful. Please login."; document.getElementById('auth-msg').style.color = "var(--accent)"; } 
-        else { localStorage.setItem("userId", data.user_id); sessionStorage.setItem('loggedIn', 'true'); currentUser = data.user_id; showApp(); }
+        if (isRegisterMode) { toggleAuthMode(); document.getElementById('auth-msg').innerText = "Registration successful. Please login."; document.getElementById('auth-msg').style.color = "var(--accent)"; }
+        else {
+          localStorage.setItem("userId", data.user_id);
+
+          localStorage.setItem("username", u);
+
+          sessionStorage.setItem("loggedIn", "true");
+
+          currentUser = data.user_id;
+
+          updateUserProfile();
+
+          showApp();
+        }
       }
     }
 
     function logout() { localStorage.removeItem("userId"); sessionStorage.removeItem('loggedIn'); currentUser = null; currentSessionId = null; showAuth(); }
+
+    function updateUserProfile() {
+
+      const username =
+        localStorage.getItem("username") || "User";
+
+      document.getElementById("username-display").innerText =
+        username;
+
+      const initials = username
+        .split(" ")
+        .map(word => word[0])
+        .join("")
+        .substring(0, 2)
+        .toUpperCase();
+
+      document.getElementById("initial-avatar").innerText =
+        initials;
+
+    }
 
     // --- SESSION MANAGEMENT ---
     async function loadSidebarSessions() {
@@ -482,16 +1225,16 @@
       const data = await res.json();
       const list = document.getElementById('session-list');
       list.innerHTML = "";
-      
+
       if (data.sessions && data.sessions.length > 0) {
         data.sessions.forEach(s => {
           const div = document.createElement('div');
           div.id = `tile-${s.session_id}`; // Gives the tile a unique ID
           div.className = `session-item ${s.session_id === currentSessionId ? 'active' : ''}`;
-          
+
           const pinHtml = s.is_pinned ? `<span class="pin-icon">📌</span>` : '';
           const pinActionText = s.is_pinned ? 'Unpin' : 'Pin';
-          
+
           div.innerHTML = `
             <span class="session-title-text" onclick="loadSessionData('${s.session_id}', '${s.session_name}')">
               ${pinHtml} ${s.session_name || "Workspace"}
@@ -511,19 +1254,19 @@
     // --- SIDEBAR MENU LOGIC ---
     function toggleMenu(event, sessionId) {
       event.stopPropagation();
-      
+
       // Close all other menus first
       document.querySelectorAll('.dropdown-menu').forEach(menu => menu.classList.remove('show'));
-      
+
       const menu = document.getElementById(`menu-${sessionId}`);
       if (menu) {
         // Calculate exactly where the button is on the screen
         const rect = event.target.getBoundingClientRect();
-        
+
         // Position the menu using fixed coordinates
         menu.style.top = `${rect.bottom + 4}px`;
         menu.style.left = `${rect.left - 80}px`; // Shifts left so it doesn't fall off screen
-        
+
         menu.classList.add('show');
       }
     }
@@ -550,7 +1293,7 @@
 
       const res = await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
       const data = await res.json();
-      
+
       if (data.status === "success") {
         if (currentSessionId === sessionId) {
           currentSessionId = null;
@@ -566,10 +1309,10 @@
 
     async function renameSession(sessionId, currentName, event) {
       event.stopPropagation();
-      
+
       // Prompt the user for the new name
       const newName = prompt("Enter a new name for this workspace:", currentName);
-      
+
       // If they hit cancel or didn't change it, do nothing
       if (!newName || newName.trim() === "" || newName === currentName) return;
 
@@ -579,7 +1322,7 @@
         body: JSON.stringify({ new_name: newName.trim() })
       });
       const data = await res.json();
-      
+
       if (data.status === "success") {
         // If the chat we renamed is currently open, update the top header instantly
         if (currentSessionId === sessionId) {
@@ -595,9 +1338,9 @@
     // --- GPT-STYLE TEXT HIGHLIGHT LOGIC ---
     let selectedText = "";
     // --- TOOLTIP LOGIC ---
-    document.addEventListener("mouseup", function(event) {
+    document.addEventListener("mouseup", function (event) {
       const tooltip = document.getElementById("selection-tooltip");
-      
+
       // 1. SAFETY CHECK: Only allow highlighting inside the chat area!
       // If they highlight text on the login screen, sidebar, or inputs, ignore it.
       if (!event.target.closest('#chat-container')) {
@@ -620,7 +1363,7 @@
     });
 
     // Hide tooltip when they start clicking/dragging elsewhere
-    document.addEventListener("mousedown", function(event) {
+    document.addEventListener("mousedown", function (event) {
       if (event.target.id !== "selection-tooltip") {
         document.getElementById("selection-tooltip").style.display = "none";
       }
@@ -636,14 +1379,14 @@
 
     function triggerQueryFurther() {
       if (!selectedText || !currentSessionId) return;
-      
+
       activeQuote = selectedText;
       document.getElementById('quote-preview-text').innerText = `"${selectedText}"`;
       document.getElementById('quote-preview').style.display = 'flex';
-      
+
       document.getElementById("selection-tooltip").style.display = "none";
       document.getElementById('chat-input').focus();
-      window.getSelection().removeAllRanges(); 
+      window.getSelection().removeAllRanges();
     }
 
     async function createNewSession() {
@@ -656,41 +1399,41 @@
 
     async function loadSessionData(sessionId, sessionName) {
       currentSessionId = sessionId;
-      
+
       // Save for refresh persistence
       sessionStorage.setItem('lastSessionId', sessionId);
       sessionStorage.setItem('lastSessionName', sessionName);
-      
+
       document.getElementById('current-session-title').innerText = sessionName;
-      document.getElementById('chat-input').disabled = false; 
+      document.getElementById('chat-input').disabled = false;
       document.getElementById('send-btn').disabled = false;
-      
+
       // Remove active class from all tiles
       Array.from(document.getElementById('session-list').children).forEach(el => el.classList.remove('active'));
 
       // Find the exact tile by its unique ID and highlight it
       const activeItem = document.getElementById(`tile-${sessionId}`);
       if (activeItem) {
-          activeItem.classList.add('active');
+        activeItem.classList.add('active');
       }
 
       const res = await fetch(`/api/sessions/${sessionId}`);
-      const data = await res.json();  
+      const data = await res.json();
 
       // Clear out the top header
       const pdfContainer = document.getElementById('attached-pdfs-container');
       pdfContainer.innerHTML = "";
-      
+
       window.currentAttachedPdfs = data.attached_pdfs || [];
-      
+
       if (data.attached_pdfs && data.attached_pdfs.length > 0) {
         // Use a Set to filter out duplicate database entries instantly
         const seenFiles = new Set();
 
         // Restore latestFilename so find_alternatives knows what file we are talking about
         latestFilename = data.attached_pdfs[data.attached_pdfs.length - 1].filename;
-        
-        data.attached_pdfs.forEach(pdf => { 
+
+        data.attached_pdfs.forEach(pdf => {
           if (!seenFiles.has(pdf.filename)) {
             seenFiles.add(pdf.filename);
             pdfContainer.innerHTML += `
@@ -702,49 +1445,49 @@
                 <button onclick="detachPdfFromWorkspace('${pdf.hash}', '${pdf.filename.replace(/'/g, "\\'")}')"
                   style="background:var(--surface2); border:1px solid var(--border); border-left:none; color:var(--danger); cursor:pointer; padding:4px 6px; font-size:12px; border-radius:0 4px 4px 0;" 
                   title="Remove ${pdf.filename} from workspace">✕</button>
-              </span>`; 
+              </span>`;
           }
         });
       }
-      
+
       const chatContainer = document.getElementById('chat-container');
       chatContainer.innerHTML = "";
       chatHistory = data.messages || [];
-      
+
       if (chatHistory.length === 0) {
-          appendSystemMessage("Workspace initialized. Attach a PDF or start typing.");
+        appendSystemMessage("Workspace initialized. Attach a PDF or start typing.");
       } else {
-          chatHistory.forEach(msg => { 
-              if (msg.role === 'user') {
-                appendUserMessage(msg.content); 
-              } else {
-                try {
-                  const data = JSON.parse(msg.content);
-                  if (data.type === "interactive_ranking") {
-                    promptForWeightsInChat(data.answer, data.extracted_specs, data.detected_type);
-                  } else if (data.type === "math_engine_results") {
-                    appendRawHTML(data.html);
-                    if (data.pricing) {
-                      injectPricing(data.results, data.container_id, data.pricing);
-                    } else {
-                      // Legacy message: inject empty pricing to avoid network loop
-                      injectPricing(data.results, data.container_id, {});
-                    }
-                  } else {
-                    appendSystemMessage(msg.content);
-                  }
-                } catch(e) {
-                  appendSystemMessage(msg.content); 
+        chatHistory.forEach(msg => {
+          if (msg.role === 'user') {
+            appendUserMessage(msg.content);
+          } else {
+            try {
+              const data = JSON.parse(msg.content);
+              if (data.type === "interactive_ranking") {
+                promptForWeightsInChat(data.answer, data.extracted_specs, data.detected_type);
+              } else if (data.type === "math_engine_results") {
+                appendRawHTML(data.html);
+                if (data.pricing) {
+                  injectPricing(data.results, data.container_id, data.pricing);
+                } else {
+                  // Legacy message: inject empty pricing to avoid network loop
+                  injectPricing(data.results, data.container_id, {});
                 }
+              } else {
+                appendSystemMessage(msg.content);
               }
-          });
+            } catch (e) {
+              appendSystemMessage(msg.content);
+            }
+          }
+        });
       }
     }
 
     // --- UPLOAD TO SESSION ---
     async function uploadAttachedPdf(eventOrFiles) {
       if (!currentSessionId) return alert("Select or create a workspace first!");
-      
+
       const files = eventOrFiles.target ? eventOrFiles.target.files : eventOrFiles;
       if (!files || files.length === 0) return;
 
@@ -755,7 +1498,7 @@
         if (file.type !== "application/pdf") continue;
 
         latestFilename = file.name;
-        
+
         // 1. Create the ChatGPT-style card
         const fileId = "file-" + Date.now() + "-" + i;
         const card = document.createElement('div');
@@ -775,14 +1518,14 @@
 
         // 2. Upload to backend invisibly
         const fd = new FormData();
-        fd.append("file", file); 
-        fd.append("user_id", currentUser); 
+        fd.append("file", file);
+        fd.append("user_id", currentUser);
         fd.append("session_id", currentSessionId);
 
         try {
           const res = await fetch("/api/upload", { method: "POST", body: fd });
           const data = await res.json();
-          
+
           if (data.error) {
             card.className = 'file-card error';
             card.querySelector('.status-icon').innerText = '❌';
@@ -792,14 +1535,14 @@
             card.querySelector('.status-icon').innerText = '📄';
             // Save the pdf_hash so it can be detached later
             if (!window.currentAttachedPdfs) window.currentAttachedPdfs = [];
-            window.currentAttachedPdfs.push({hash: data.pdf_hash, filename: file.name});
+            window.currentAttachedPdfs.push({ hash: data.pdf_hash, filename: file.name });
           }
-        } catch (err) { 
+        } catch (err) {
           card.className = 'file-card error';
           card.querySelector('.status-icon').innerText = '❌';
         }
       }
-      
+
       if (eventOrFiles.target) eventOrFiles.target.value = "";
     }
 
@@ -843,11 +1586,11 @@
 
     function appendSystemMessage(htmlContent) {
       const chatContainer = document.getElementById('chat-container');
-      
+
       // Parse markdown and add citation badges
       let formatted = marked.parse(String(htmlContent));
       formatted = formatted.replace(/\[(\w+)\]/g, '<span class="citation-badge">📄 $1</span>');
-      
+
       chatContainer.innerHTML += `
         <div class="msg-row system">
           <div class="bubble">
@@ -868,14 +1611,14 @@
       chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
     }
 
-async function sendQuestion() {
+    async function sendQuestion() {
       if (!currentSessionId) return;
       const input = document.getElementById('chat-input');
       const text = input.value.trim();
-      
+
       const stagingArea = document.getElementById('file-staging-area');
       const hasStagedFiles = stagingArea.querySelectorAll('.file-card.success').length > 0;
-      
+
       // Allow sending if there is text OR an active quote OR staged files waiting to be sent
       if (!text && !activeQuote && !hasStagedFiles) return;
 
@@ -885,11 +1628,11 @@ async function sendQuestion() {
       // If no text was typed but a file is being sent, inject a local UI message (DO NOT call LLM backend)
       if (!text && !activeQuote && hasStagedFiles) {
         const topContainer = document.getElementById('attached-pdfs-container');
-        let lastFileName = "";
-        
+        let uploadedNames = [];
+
         stagingArea.querySelectorAll('.file-card.success .file-name').forEach(el => {
           const fileName = el.innerText;
-          lastFileName = fileName;
+          uploadedNames.push(fileName);
           const isDuplicate = Array.from(topContainer.children).some(child => child.innerText.includes(fileName));
           if (!isDuplicate) {
             topContainer.innerHTML += `
@@ -907,18 +1650,28 @@ async function sendQuestion() {
 
         stagingArea.innerHTML = "";
         input.value = "";
-        
-        const msgHtml = `<span style="color:var(--accent)">📄 <b>${lastFileName}</b> has been successfully attached to the workspace!</span><br><br>You can now ask questions about this datasheet below, or click its 🔍 button at the top to find alternatives.`;
-        appendSystemMessage(msgHtml);
-        
-        chatHistory.push({ "role": "assistant", "content": msgHtml });
-        fetch("/api/sessions/save_messages", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: currentSessionId, new_messages: [
-            { "role": "assistant", "content": msgHtml }
-          ]})
-        });
-        
+
+        let msgHtml = "";
+        if (uploadedNames.length > 1) {
+          latestFilename = ""; // Clear active file to ensure LLM recognizes ambiguity
+          msgHtml = `<span style="color:var(--accent)">📄 <b>${uploadedNames.length} datasheets</b> have been successfully attached to the workspace!</span><br><br>You can now ask questions about them below, or click their 🔍 buttons at the top to find market alternatives individually.`;
+        } else if (uploadedNames.length === 1) {
+          latestFilename = uploadedNames[0];
+          msgHtml = `<span style="color:var(--accent)">📄 <b>${uploadedNames[0]}</b> has been successfully attached to the workspace!</span><br><br>You can now ask questions about this datasheet below, or click its 🔍 button at the top to find alternatives.`;
+        }
+
+        if (msgHtml) {
+          appendSystemMessage(msgHtml);
+          chatHistory.push({ "role": "assistant", "content": msgHtml });
+          fetch("/api/sessions/save_messages", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session_id: currentSessionId, new_messages: [
+                { "role": "assistant", "content": msgHtml }
+              ]
+            })
+          });
+        }
         return;
       }
 
@@ -934,11 +1687,11 @@ async function sendQuestion() {
         clearQuote();
       }
 
-      input.value = ""; 
-      
+      input.value = "";
+
       // Move all staged files to the top header permanently BEFORE clearing the input box
       const topContainer = document.getElementById('attached-pdfs-container');
-      
+
       stagingArea.querySelectorAll('.file-card.success .file-name').forEach(el => {
         const fileName = el.innerText;
         latestFilename = fileName;
@@ -975,30 +1728,30 @@ async function sendQuestion() {
             is_global: true, active_file: latestFilename
           })
         });
-        
+
         const contentType = res.headers.get("content-type") || "";
-        
+
         if (contentType.includes("text/event-stream")) {
           // ✨ SSE STREAMING MODE — render tokens word-by-word
           document.getElementById(loadingId).remove();
-          
+
           const streamMsgId = "stream-" + Date.now();
           const chatContainer = document.getElementById('chat-container');
           chatContainer.innerHTML += `<div class="msg-row system" id="${streamMsgId}"><div class="bubble"><div class="bubble-content" id="${streamMsgId}-content"></div></div></div>`;
-          
+
           let fullAnswer = "";
           const reader = res.body.getReader();
           const decoder = new TextDecoder();
           let buffer = "";
-          
+
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
             buffer = lines.pop(); // Keep incomplete line in buffer
-            
+
             for (const line of lines) {
               if (line.startsWith("data: ")) {
                 const token = line.slice(6);
@@ -1009,7 +1762,7 @@ async function sendQuestion() {
                 }
                 try {
                   fullAnswer += JSON.parse(token);
-                } catch(e) {
+                } catch (e) {
                   fullAnswer += token; // fallback just in case
                 }
                 const contentEl = document.getElementById(`${streamMsgId}-content`);
@@ -1020,33 +1773,41 @@ async function sendQuestion() {
               }
             }
           }
-          
+
           // Final render with full markdown
           const contentEl = document.getElementById(`${streamMsgId}-content`);
           if (contentEl) contentEl.innerHTML = marked.parse(fullAnswer);
-          
+
           chatHistory.push({ "role": "user", "content": text || displayMessage });
           chatHistory.push({ "role": "assistant", "content": fullAnswer });
-          
+
         } else {
           // JSON fallback (shouldn't normally happen now since chat/stream is pure RAG)
           const data = await res.json();
           document.getElementById(loadingId).remove();
-          
+
           if (data.error) { appendSystemMessage(`<span style="color:var(--danger)">Error: ${data.error}</span>`); return; }
-          
+
           chatHistory.push({ "role": "user", "content": text || displayMessage });
-          appendSystemMessage(data.answer);
-          chatHistory.push({ "role": "assistant", "content": data.answer });
+
+          if (data.type === "interactive_ranking") {
+            promptForWeightsInChat(data.answer, data.extracted_specs, data.detected_type);
+            chatHistory.push({ "role": "assistant", "content": JSON.stringify(data) });
+          } else {
+            appendSystemMessage(data.answer);
+            chatHistory.push({ "role": "assistant", "content": data.answer });
+          }
         }
 
         // Save memory to backend
         await fetch("/api/sessions/save_messages", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: currentSessionId, new_messages: [
-            { "role": "user", "content": text || displayMessage },
-            { "role": "assistant", "content": chatHistory[chatHistory.length-1].content }
-          ]})
+          body: JSON.stringify({
+            session_id: currentSessionId, new_messages: [
+              { "role": "user", "content": text || displayMessage },
+              { "role": "assistant", "content": chatHistory[chatHistory.length - 1].content }
+            ]
+          })
         });
       } catch (err) {
         document.getElementById(loadingId)?.remove();
@@ -1082,7 +1843,7 @@ async function sendQuestion() {
       }
 
       const numToSelect = Math.ceil(validFeatures.length / 2);
-      
+
       window.mathEngineStates[engineId] = {
         activeFeatures: validFeatures.slice(0, numToSelect),
         inactiveFeatures: validFeatures.slice(numToSelect),
@@ -1095,7 +1856,7 @@ async function sendQuestion() {
       html += `<p style="margin-top:12px;">Component Class: <strong style="color:var(--accent)">${dType}</strong></p>`;
       html += `<div id="weight-panel-container-${engineId}"></div>`;
       html += `<button class="btn" style="margin-top:20px;" onclick="submitWeights(this, '${engineId}')">▶ RUN MARKET MATH ENGINE</button>`;
-      
+
       appendSystemMessage(html);
       renderWeightPanel(engineId);
     }
@@ -1109,25 +1870,25 @@ async function sendQuestion() {
       });
     }
 
-    function removeFeature(featureName, engineId) { 
+    function removeFeature(featureName, engineId) {
       const state = window.mathEngineStates[engineId];
-      saveCurrentWeights(engineId); 
-      state.activeFeatures = state.activeFeatures.filter(f => f !== featureName); 
-      state.inactiveFeatures.push(featureName); 
-      state.currentWeightValues[featureName] = 0; 
-      renderWeightPanel(engineId); 
+      saveCurrentWeights(engineId);
+      state.activeFeatures = state.activeFeatures.filter(f => f !== featureName);
+      state.inactiveFeatures.push(featureName);
+      state.currentWeightValues[featureName] = 0;
+      renderWeightPanel(engineId);
     }
 
-    function addFeature(engineId) { 
+    function addFeature(engineId) {
       const state = window.mathEngineStates[engineId];
-      const selectEl = document.getElementById(`add-feature-select-${engineId}`); 
-      if (!selectEl || !selectEl.value) return; 
-      const featureName = selectEl.value; 
-      saveCurrentWeights(engineId); 
-      state.inactiveFeatures = state.inactiveFeatures.filter(f => f !== featureName); 
-      state.activeFeatures.push(featureName); 
-      if (!(featureName in state.currentWeightValues)) state.currentWeightValues[featureName] = 0; 
-      renderWeightPanel(engineId); 
+      const selectEl = document.getElementById(`add-feature-select-${engineId}`);
+      if (!selectEl || !selectEl.value) return;
+      const featureName = selectEl.value;
+      saveCurrentWeights(engineId);
+      state.inactiveFeatures = state.inactiveFeatures.filter(f => f !== featureName);
+      state.activeFeatures.push(featureName);
+      if (!(featureName in state.currentWeightValues)) state.currentWeightValues[featureName] = 0;
+      renderWeightPanel(engineId);
     }
 
     function renderWeightPanel(engineId) {
@@ -1165,7 +1926,7 @@ async function sendQuestion() {
 
       html += `</div>`;
       container.innerHTML = html;
-      
+
       state.activeFeatures.forEach(feature => { const el = document.getElementById(`w-${engineId}-${feature.replace(/\W+/g, '')}`); if (el) handleWeightChange(el, '${engineId}'); });
       refreshWeightBudgetUI(engineId);
     }
@@ -1183,8 +1944,8 @@ async function sendQuestion() {
     }
 
     function handleWeightChange(slider, engineId) {
-      const v = parseInt(slider.value||'0',10); const m = parseInt(slider.max||'100',10);
-      if(v > m) slider.value = String(m);
+      const v = parseInt(slider.value || '0', 10); const m = parseInt(slider.max || '100', 10);
+      if (v > m) slider.value = String(m);
       refreshWeightBudgetUI(engineId);
     }
 
@@ -1194,7 +1955,7 @@ async function sendQuestion() {
       const state = window.mathEngineStates[engineId];
       for (const feature of Object.keys(state.extractedSpecs)) {
         const el = document.getElementById(`w-${engineId}-${feature.replace(/\W+/g, '')}`);
-        if(el) weights[feature] = parseInt(el.value);
+        if (el) weights[feature] = parseInt(el.value);
       }
 
       const loadingId = "loading-math-" + Date.now();
@@ -1213,7 +1974,7 @@ async function sendQuestion() {
         let resHTML = `<div style="display:flex; justify-content:space-between; align-items:center;">
           <p style="margin:0;"><strong>Market Alternatives Computed:</strong></p>
         </div>`;
-        
+
         resHTML += `
           <div id="sort-controls-${containerId}" style="display:none; margin-top:16px; margin-bottom:16px; gap:10px; align-items:center;">
             <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">Sort by:</span>
@@ -1243,7 +2004,7 @@ async function sendQuestion() {
             </div>`;
         });
         resHTML += `</div>`;
-        
+
         appendRawHTML(resHTML);
         const pricingData = await fetchLivePricing(data.results, containerId);
 
@@ -1256,12 +2017,14 @@ async function sendQuestion() {
           pricing: pricingData
         };
         chatHistory.push({ "role": "assistant", "content": JSON.stringify(resultData) });
-        
+
         fetch("/api/sessions/save_messages", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: currentSessionId, new_messages: [
-            { "role": "assistant", "content": JSON.stringify(resultData) }
-          ]})
+          body: JSON.stringify({
+            session_id: currentSessionId, new_messages: [
+              { "role": "assistant", "content": JSON.stringify(resultData) }
+            ]
+          })
         });
 
       } catch (err) {
@@ -1272,38 +2035,38 @@ async function sendQuestion() {
     }
 
     function injectPricing(results, containerId, pricing) {
-        results.forEach((match) => {
-          const el = document.getElementById(`pricing-${containerId}-${match.part_number}`);
-          if (!el) return;
+      results.forEach((match) => {
+        const el = document.getElementById(`pricing-${containerId}-${match.part_number}`);
+        if (!el) return;
 
-          const info = pricing[match.part_number];
-          const cardEl = document.getElementById(`card-${containerId}-${match.part_number}`);
+        const info = pricing[match.part_number];
+        const cardEl = document.getElementById(`card-${containerId}-${match.part_number}`);
 
-          if (!info || info.error) {
-            el.innerHTML = `<span class="pricing-badge badge-price">💰 Price: N/A</span><span class="pricing-badge badge-stock no-stock">📦 Stock: N/A</span>`; return;
-          }
+        if (!info || info.error) {
+          el.innerHTML = `<span class="pricing-badge badge-price">💰 Price: N/A</span><span class="pricing-badge badge-stock no-stock">📦 Stock: N/A</span>`; return;
+        }
 
-          if (cardEl) {
-            cardEl.setAttribute('data-price', info.price !== null ? info.price : Infinity);
-            cardEl.setAttribute('data-stock', info.stock !== null && info.stock !== undefined ? info.stock : -1);
-          }
+        if (cardEl) {
+          cardEl.setAttribute('data-price', info.price !== null ? info.price : Infinity);
+          cardEl.setAttribute('data-stock', info.stock !== null && info.stock !== undefined ? info.stock : -1);
+        }
 
-          const priceStr = info.price !== null ? `$${Number(info.price).toFixed(2)}` : 'N/A';
-          const stock = info.stock;
-          let stockClass = 'in-stock', stockLabel = '';
-          if (stock === null || stock === undefined) { stockClass = 'no-stock'; stockLabel = 'N/A'; }
-          else if (stock === 0) { stockClass = 'no-stock'; stockLabel = 'Out of Stock'; }
-          else if (stock < 100) { stockClass = 'low-stock'; stockLabel = `${stock.toLocaleString()} units`; }
-          else { stockClass = 'in-stock'; stockLabel = `${stock.toLocaleString()} units`; }
+        const priceStr = info.price !== null ? `$${Number(info.price).toFixed(2)}` : 'N/A';
+        const stock = info.stock;
+        let stockClass = 'in-stock', stockLabel = '';
+        if (stock === null || stock === undefined) { stockClass = 'no-stock'; stockLabel = 'N/A'; }
+        else if (stock === 0) { stockClass = 'no-stock'; stockLabel = 'Out of Stock'; }
+        else if (stock < 100) { stockClass = 'low-stock'; stockLabel = `${stock.toLocaleString()} units`; }
+        else { stockClass = 'in-stock'; stockLabel = `${stock.toLocaleString()} units`; }
 
-          el.innerHTML = `<span class="pricing-badge badge-price">💰 ${priceStr}</span><span class="pricing-badge badge-stock ${stockClass}">📦 ${stockLabel}</span>`;
+        el.innerHTML = `<span class="pricing-badge badge-price">💰 ${priceStr}</span><span class="pricing-badge badge-stock ${stockClass}">📦 ${stockLabel}</span>`;
 
-          if (info.datasheet_url) document.getElementById(`ds-${containerId}-${match.part_number}`).href = info.datasheet_url;
-          if (info.digikey_url) document.getElementById(`buy-${containerId}-${match.part_number}`).href = info.digikey_url;
-        });
-        
-        const controls = document.getElementById(`sort-controls-${containerId}`);
-        if (controls) controls.style.display = 'flex';
+        if (info.datasheet_url) document.getElementById(`ds-${containerId}-${match.part_number}`).href = info.datasheet_url;
+        if (info.digikey_url) document.getElementById(`buy-${containerId}-${match.part_number}`).href = info.digikey_url;
+      });
+
+      const controls = document.getElementById(`sort-controls-${containerId}`);
+      if (controls) controls.style.display = 'flex';
     }
 
     async function fetchLivePricing(results, containerId) {
@@ -1324,7 +2087,7 @@ async function sendQuestion() {
       const container = document.getElementById(containerId);
       if (!container) return;
       const cards = Array.from(container.querySelectorAll('.part-card'));
-      
+
       cards.sort((a, b) => {
         if (criterion === 'price') {
           const pa = parseFloat(a.getAttribute('data-price'));
@@ -1341,8 +2104,8 @@ async function sendQuestion() {
           return sb - sa; // Descending
         }
       });
-      
-    // Re-append in new order
+
+      // Re-append in new order
       cards.forEach(card => container.appendChild(card));
     }
 
@@ -1352,7 +2115,7 @@ async function sendQuestion() {
         alert("Please select or create a workspace first.");
         return;
       }
-      
+
       const attached = window.currentAttachedPdfs || [];
       const uniqueAttached = [];
       const seen = new Set();
@@ -1385,7 +2148,7 @@ async function sendQuestion() {
         alert("Please select a PDF.");
         return;
       }
-      
+
       document.getElementById('find-alt-modal').style.display = 'none';
       await triggerFindAlternativesForFile(selected.value);
     }
@@ -1414,7 +2177,7 @@ async function sendQuestion() {
 
         if (data.type === "interactive_ranking") {
           promptForWeightsInChat(data.answer, data.extracted_specs, data.detected_type);
-          
+
           // Save to chat history for persistence
           const userMsg = { "role": "user", "content": `Find alternatives for ${filename}` };
           const assistantMsg = { "role": "assistant", "content": JSON.stringify(data) };
@@ -1465,7 +2228,7 @@ async function sendQuestion() {
     }
 
     // --- THE ULTIMATE DRAG SHIELD LOGIC ---
-    
+
     // 1. Create a massive invisible shield that covers the entire screen
     const dragShield = document.createElement('div');
     dragShield.id = "drag-shield";
@@ -1483,9 +2246,9 @@ async function sendQuestion() {
 
     // 2. Prevent default browser behavior globally so it NEVER opens the PDF
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-      document.addEventListener(eventName, (e) => { 
-        e.preventDefault(); 
-        e.stopPropagation(); 
+      document.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
       }, false);
     });
 
@@ -1505,12 +2268,13 @@ async function sendQuestion() {
     dragShield.addEventListener('drop', (e) => {
       dragShield.style.display = 'none';
       const files = e.dataTransfer.files;
-      
+
       // Send the dropped files directly to our uploader
       if (files && files.length > 0) {
         uploadAttachedPdf(files);
       }
     });
   </script>
-</body> 
+</body>
+
 </html>
