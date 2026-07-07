@@ -1008,6 +1008,42 @@
       color: var(--accent);
     }
 
+
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+    }
+
+    .avatar-circle {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: bold;
+      flex-shrink: 0;
+    }
+
+    .user-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .user-name {
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
     @media (max-width: 900px) {
       body {
         height: auto;
@@ -1132,6 +1168,14 @@
       <div class="session-list" id="session-list"></div>
 
       <div class="user-controls">
+
+        <div class="user-profile">
+          <div id="initial-avatar" class="avatar-circle">U</div>
+          <div class="user-info">
+            <div id="username-display" class="user-name">User</div>
+          </div>
+        </div>
+
         <button class="logout-btn" onclick="logout()">LOGOUT</button>
       </div>
     </aside>
@@ -1252,11 +1296,26 @@
       if (data.error) { document.getElementById('auth-msg').innerText = data.error; }
       else {
         if (isRegisterMode) { toggleAuthMode(); document.getElementById('auth-msg').innerText = "Registration successful. Please login."; document.getElementById('auth-msg').style.color = "var(--accent)"; }
-        else { localStorage.setItem("userId", data.user_id); sessionStorage.setItem('loggedIn', 'true'); currentUser = data.user_id; showApp(); }
+        else {
+          localStorage.setItem("userId", data.user_id);
+          localStorage.setItem("username", u);
+          sessionStorage.setItem("loggedIn", "true");
+          currentUser = data.user_id;
+          updateUserProfile();
+          showApp();
+        }
       }
     }
 
     function logout() { localStorage.removeItem("userId"); sessionStorage.removeItem('loggedIn'); currentUser = null; currentSessionId = null; showAuth(); }
+
+    
+    function updateUserProfile() {
+      const username = localStorage.getItem("username") || "User";
+      document.getElementById("username-display").innerText = username;
+      const initials = username.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase();
+      document.getElementById("initial-avatar").innerText = initials;
+    }
 
     // --- SESSION MANAGEMENT ---
     async function loadSidebarSessions() {
@@ -1710,18 +1769,25 @@
       // If no text was typed but a file is being sent, inject a local UI message (DO NOT call LLM backend)
       if (!text && !activeQuote && hasStagedFiles) {
         const topContainer = document.getElementById('attached-pdfs-container');
-        let lastFileName = "";
+        let uploadedNames = [];
 
         stagingArea.querySelectorAll('.file-card.success .file-name').forEach(el => {
           const fileName = el.innerText;
-          lastFileName = fileName;
+          uploadedNames.push(fileName);
           appendPdfPill(fileName, topContainer);
         });
 
         stagingArea.innerHTML = "";
         input.value = "";
 
-        const msgHtml = `<span style="color:var(--accent)">📄 <b>${lastFileName}</b> has been successfully attached to the workspace!</span><br><br>You can now ask questions about this datasheet below, or click its 🔍 button at the top to find alternatives.`;
+        let msgHtml = "";
+        if (uploadedNames.length > 1) {
+          latestFilename = ""; // Clear active file to ensure LLM recognizes ambiguity
+          msgHtml = `<span style="color:var(--accent)">📄 <b>${uploadedNames.length} datasheets</b> have been successfully attached to the workspace!</span><br><br>You can now ask questions about them below, or click their 🔍 buttons at the top to find market alternatives individually.`;
+        } else if (uploadedNames.length === 1) {
+          latestFilename = uploadedNames[0];
+          msgHtml = `<span style="color:var(--accent)">📄 <b>${uploadedNames[0]}</b> has been successfully attached to the workspace!</span><br><br>You can now ask questions about this datasheet below, or click its 🔍 button at the top to find alternatives.`;
+        }
         appendSystemMessage(msgHtml);
 
         chatHistory.push({ "role": "assistant", "content": msgHtml });

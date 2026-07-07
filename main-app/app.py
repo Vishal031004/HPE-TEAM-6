@@ -368,6 +368,112 @@ def answer_rag_question(query, retrieved_chunks, chat_history=None, is_global=Fa
     except Exception as e:
         print(f"Error calling extractor service answer_rag: {e}")
         return "I encountered an error trying to communicate with the generation service."
+# ========================================================================
+# CONVERSATIONAL ALTERNATIVES CONFIRMATION HELPERS
+# ========================================================================
+
+_AFFIRMATIONS = {"yes", "yeah", "yep", "sure", "ok", "okay", "go ahead", "proceed",
+                 "run it", "do it", "confirm", "y", "absolutely", "please", "yup",
+                 "ha", "haa", "haan", "ya", "yes please", "sure thing"}
+
+def _is_user_affirming(text: str) -> bool:
+    """Returns True if the user's message is a simple affirmation."""
+    cleaned = text.strip().lower().rstrip("!.")
+    return cleaned in _AFFIRMATIONS or any(cleaned.startswith(a + " ") for a in _AFFIRMATIONS)
+
+def _has_pending_alt_confirmation(chat_history: list) -> bool:
+    """
+    Returns True if the last assistant message is an alternatives confirmation prompt.
+    Uses text pattern matching — no hidden markers needed.
+    """
+    if not chat_history:
+        return False
+    for msg in reversed(chat_history):
+        if msg.get("role") == "assistant":
+            content = msg.get("content", "")
+            return (
+                "Alternative Market Finder" in content
+                and "yes" in content.lower()
+                and "proceed" in content.lower()
+            )
+    return False
+
+def _resolve_target_filename(request) -> str:
+    """
+    Resolves which PDF the user is referring to.
+    Uses LLM disambiguation for multi-PDF workspaces and pronoun resolution.
+    Returns the matched filename, 'AMBIGUOUS', or empty string.
+    """
+    target_filename = request.filename or ""
+
+    if _has_pending_alt_confirmation(request.chat_history) and _is_user_affirming(request.question):
+        import re
+        for msg in reversed(request.chat_history):
+            if msg.get("role") == "assistant":
+                content = msg.get("content", "")
+                match = re.search(r'\*\*Alternative Market Finder\*\* for \*\*(.*?)\*\*', content)
+                if match:
+                    extracted = match.group(1).strip()
+                    if not extracted.lower().endswith(".pdf"):
+                        extracted += ".pdf"
+                    print(f"🎯 [RESOLVER] Auto-resolved from pending confirmation: {extracted}")
+                    return extracted
+                break
+
+    # If in a session, resolve from attached PDFs using LLM
+    if request.session_id:
+        session_data = get_session_data(request.session_id)
+        if session_data:
+            attached_hashes = session_data.get("attached_pdfs", [])
+            if attached_hashes:
+                user_pdfs = get_user_pdfs(session_data.get("user_id", "")) if session_data.get("user_id") else []
+                hash_to_name = {p["pdf_hash"]: p["filename"] for p in user_pdfs} if user_pdfs else {}
+                # Also pull filenames from extraction cache for hashes not in user_pdfs
+                available_files = []
+                for h in attached_hashes:
+                    fname = hash_to_name.get(h)
+                    if not fname:
+                        cached = get_cached_pdf_extraction(h)
+                        fname = cached.get("filename") if cached else None
+                    if fname:
+                        available_files.append(fname)
+
+                if len(available_files) == 1:
+                    return available_files[0]
+
+                if available_files:
+                    messages = [{
+                        "role": "system",
+                        "content": (
+                            f"You are a filename resolver. The user wants to find market alternatives for a component. "
+                            f"Available files in their workspace: {', '.join(available_files)}.\n"
+                            "Based on the user's query and chat history (especially pronouns like 'this', 'it', 'the gyroscope'), "
+                            "return ONLY the exact filename the user is referring to. "
+                            "If truly ambiguous, return 'AMBIGUOUS'."
+                        )
+                    }]
+                    if request.chat_history:
+                        for msg in request.chat_history[-8:]:
+                            messages.append({"role": msg.get("role", "user"), "content": msg.get("content") or ""})
+                    messages.append({"role": "user", "content": request.question})
+
+                    try:
+                        res = requests.post(
+                            f"{LLM_SERVER_URL}/api/llm/generate_text",
+                            json={"messages": messages, "model": "gpt-4o-mini", "temperature": 0.0}
+                        )
+                        res.raise_for_status()
+                        predicted = res.json().get("content", "").strip()
+                        for f in available_files:
+                            if predicted.lower() == f.lower() or predicted.lower() in f.lower() or f.lower() in predicted.lower():
+                                print(f"🎯 [RESOLVER] Disambiguated to: {f}")
+                                return f
+                        return "AMBIGUOUS"
+                    except Exception as e:
+                        print(f"⚠️ Filename resolution failed: {e}")
+
+    return target_filename
+
 def run_agentic_chat_loop(request, max_iterations=5):
     system_prompt = (
         "You are an expert hardware engineering AI assistant. "
@@ -847,18 +953,110 @@ async def chat_with_datasheet(request: ChatRequest):
 
 @app.post("/api/chat/stream")
 async def chat_stream(request: ChatRequest):
-    """SSE streaming endpoint for RAG Q&A.
-    All chat queries go through here as pure information retrieval.
-    Find Alternatives is handled by the dedicated /api/find_alternatives endpoint."""
+    """SSE streaming endpoint for RAG Q&A with conversational alternatives confirmation."""
     from fastapi.responses import StreamingResponse
-    
-    # 1. Intent Routing
+
+    # =========================================================
+    # STEP 1: Intent Routing
+    # =========================================================
     intent = route_user_intent(request.question, request.chat_history)
     print(f"\n🧠 [AGENT ROUTER] Detected Intent: {intent.upper()}")
-    
+
     if intent == "fetch_pricing":
         answer = run_agentic_chat_loop(request)
         return {"answer": answer}
+
+    # =========================================================
+    # STEP 2: Find Alternatives — confirm first, OR run directly if user is affirming
+    # =========================================================
+    if intent == "find_alternatives":
+        target_filename = _resolve_target_filename(request)
+
+        if not target_filename or target_filename == "AMBIGUOUS":
+            import json
+            available_files = []
+            if request.session_id:
+                session_data = get_session_data(request.session_id)
+                if session_data:
+                    attached_hashes = session_data.get("attached_pdfs", [])
+                    user_pdfs = get_user_pdfs(session_data.get("user_id", "")) if session_data.get("user_id") else []
+                    hash_to_name = {p["pdf_hash"]: p["filename"] for p in user_pdfs} if user_pdfs else {}
+                    for h in attached_hashes:
+                        fname = hash_to_name.get(h)
+                        if not fname:
+                            cached = get_cached_pdf_extraction(h)
+                            fname = cached.get("filename") if cached else None
+                        if fname:
+                            available_files.append(fname)
+                            
+            def stream_ambiguous():
+                if available_files:
+                    msg = "I can see you'd like to find market alternatives, but I am not sure which component you are referring to. Please specify one of the following:\n\n"
+                    for f in set(available_files):
+                        msg += f"- **{f}**\n"
+                else:
+                    msg = "I can see you'd like to find market alternatives, but there are no datasheets in your workspace. Please upload one first."
+                
+                yield f"data: {json.dumps(msg)}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(stream_ambiguous(), media_type="text/event-stream")
+
+        file_path = os.path.join(DATASHEETS_DIR, target_filename)
+        component_type = "component"
+        if os.path.exists(file_path):
+            pdf_sha_check = pdf_hash(file_path)
+            cached_check = get_cached_pdf_extraction(pdf_sha_check)
+            if cached_check and cached_check.get("detected_type") and cached_check["detected_type"] != "Unknown":
+                component_type = cached_check["detected_type"]
+
+        # If user typed a bare affirmation ("yes", "sure", "ok", etc.) →
+        # they're confirming the previous question, run the pipeline directly.
+        if _is_user_affirming(request.question):
+            print(f"✅ [CONFIRM] User affirmed — running alternatives for: {target_filename}")
+            if not os.path.exists(file_path):
+                from fastapi.responses import JSONResponse
+                return JSONResponse({"answer": f"I can't find the file '{target_filename}' on disk."})
+
+            pdf_sha = pdf_hash(file_path)
+            cached_record = get_cached_pdf_extraction(pdf_sha)
+
+            if cached_record and cached_record.get("specs"):
+                detected_type = cached_record.get("detected_type", "Unknown")
+                user_extracted_specs = cached_record.get("specs")
+            else:
+                detected_type = detect_component_type(file_path)
+                if detected_type == "Unknown":
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse({"answer": "Could not detect component category. Please try again."})
+                target_specs, market_competitors = get_or_build_component_data(detected_type)
+                user_extracted_specs = parse_datasheet_staged(
+                    filepath=file_path, component_type=detected_type,
+                    required_features=target_specs, market_competitors=market_competitors,
+                    component_name=target_filename, chunk_size=15
+                )
+                save_pdf_extraction(pdf_sha, target_filename, detected_type, user_extracted_specs)
+
+            from fastapi.responses import JSONResponse
+            return JSONResponse({
+                "type": "interactive_ranking",
+                "detected_type": detected_type,
+                "extracted_specs": user_extracted_specs,
+                "answer": f"Running the Alternative Finder for **{target_filename}** ({detected_type}). Adjust the weights below and click **Run Math Engine**."
+            })
+
+        # User made an explicit find_alternatives request (not just "yes") → ask for confirmation first
+        part_name = target_filename.replace(".pdf", "").replace(".PDF", "")
+        confirmation_msg = (
+            f"Would you like me to run the **Alternative Market Finder** for **{part_name}** ({component_type})?\n\n"
+            f"This will extract its specs and search DigiKey for the closest market alternatives. "
+            f"Type **yes** to proceed."
+        )
+
+        def stream_confirmation():
+            import json
+            yield f"data: {json.dumps(confirmation_msg)}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(stream_confirmation(), media_type="text/event-stream")
     
     # Build the RAG context, then stream the LLM response
     reformulated = reformulate_query(request.question, request.chat_history, request.active_file)
@@ -895,7 +1093,7 @@ async def chat_stream(request: ChatRequest):
             
     raw_chunks = retrieve_rag_context(reformulated, request.filename, pdf_sha256=target_hashes, top_k=15)
     
-    ranked_chunks = rerank_chunks_cross_encoder(reformulated, raw_chunks, top_k=5)
+    ranked_chunks = rerank_chunks_cross_encoder(reformulated, raw_chunks, top_k=10)
     
     # Build Workspace Metadata Context
     workspace_metadata_text = ""
@@ -928,9 +1126,13 @@ async def chat_stream(request: ChatRequest):
         f"Source documents with matching text chunks: {doc_list}\n\n"
         f"{workspace_metadata_text}"
         "CRITICAL RULES:\n"
-        "1. MULTI-DOCUMENT AWARENESS: Synthesize data from the provided context.\n"
-        "2. ZERO HALLUCINATION: If data is missing from context, say so. If a user asks for stock/price and it's not in the context, clearly state you don't have real-time access.\n"
-        "3. FORMATTING: Use Markdown. Use bullet points and bold text for readability. Do NOT append 'Source: [Chunk ID...]' to your responses.\n\n"
+        "1. MULTI-DOCUMENT AWARENESS: Synthesize data from the provided context or the chat history.\n"
+        "2. ZERO HALLUCINATION: If data is missing from context or history, say so. If a user asks for stock/price and it's not in the context, clearly state you don't have real-time access.\n"
+        "3. FORMATTING: Use Markdown. Use bullet points and bold text for readability.\n"
+        "4. SOURCE CITATION: If your answer relies heavily on the RETRIEVED TEXT CONTEXT below, at the very end of your response (after a blank line), add a single subtle line formatted exactly like this:\n"
+        "*(retrieved from [filename],  pg. [X], [Y])*\n"
+        "Rules: all lowercase, inside parentheses, italic (wrap in *), no bold, no separator line, no emoji. List only unique page numbers. If multiple files, comma-separate them. Keep it minimal and unobtrusive.\n"
+        "CRITICAL EXCEPTION TO RULE 4: If your answer relies strictly on information provided in the chat history (e.g., market alternatives, user statements), DO NOT add any citation.\n\n"
         f"--- START RETRIEVED TEXT CONTEXT ---\n{context_text}\n--- END RETRIEVED TEXT CONTEXT ---"
     )
     
