@@ -2,6 +2,10 @@ import os
 import sys
 from typing import List, Dict, Any, Union
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
+import queue
+import threading
+import json
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -91,6 +95,42 @@ def parse_staged_endpoint(request: ParseStagedRequest):
         return specs
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/extractor/parse_staged_stream")
+def parse_staged_stream_endpoint(request: ParseStagedRequest):
+    q = queue.Queue()
+    
+    def progress_callback(event_data):
+        q.put(event_data)
+        
+    def extraction_thread():
+        try:
+            specs = parse_datasheet_staged(
+                filepath=request.filepath,
+                component_type=request.component_type,
+                required_features=request.required_features,
+                market_competitors=request.market_competitors,
+                component_name=request.component_name,
+                chunk_size=request.chunk_size,
+                progress_callback=progress_callback
+            )
+            q.put({"event": "final_result", "specs": specs})
+        except Exception as e:
+            q.put({"event": "error", "error": str(e)})
+        finally:
+            q.put(None) # Sentinel to stop generator
+            
+    thread = threading.Thread(target=extraction_thread)
+    thread.start()
+    
+    def event_generator():
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item)}\n\n"
+            
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.post("/api/extractor/rerank")
 def rerank_endpoint(request: RerankRequest):

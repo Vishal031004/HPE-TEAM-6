@@ -77,7 +77,7 @@ def calculate_feature_score(user_val_str: str, comp_val_str: str, weight: int = 
 def rank_components(user_extracted_specs: dict, digikey_competitors: list, feature_weights: dict = None) -> list:
     """
     Ranks the 20 DigiKey competitors against the user's PDF specs using weighted math.
-    Returns the top 5 closest matches.
+    Returns the top 5 closest matches, including per-feature similarity scores.
     """
     print("\n🧮 [Stage 4] Running Mathematical Similarity Engine...")
     
@@ -90,25 +90,33 @@ def rank_components(user_extracted_specs: dict, digikey_competitors: list, featu
         total_score = 0
         max_possible_score = 0
         comp_specs = comp.get("specs", {})
+        feature_scores = {}
         
         for feature, user_val in user_extracted_specs.items():
             if user_val == "Not Found" or user_val is None:
                 continue
                 
             weight = feature_weights.get(feature, 10)
+            if weight == 0:
+                continue
             max_possible_score += weight
             
             if feature in comp_specs:
                 comp_val = comp_specs[feature]
                 score = calculate_feature_score(user_val, comp_val, weight)
                 total_score += score
+                # Normalize to 0.0–1.0 for this specific feature
+                feature_scores[feature] = round(score / weight, 2) if weight > 0 else 0
+            else:
+                feature_scores[feature] = 0
 
         final_percentage = (total_score / max_possible_score * 100) if max_possible_score > 0 else 0
 
         ranked_results.append({
             "part_number": comp["part_number"],
             "score": round(final_percentage, 1),
-            "specs": comp_specs
+            "specs": comp_specs,
+            "feature_scores": feature_scores
         })
 
     ranked_results.sort(key=lambda x: x["score"], reverse=True)

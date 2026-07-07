@@ -264,6 +264,7 @@ def parse_datasheet_staged(
     market_competitors: List[Dict],
     component_name: str = "Unknown Part",
     chunk_size: int = 5,
+    progress_callback = None,
 ) -> Dict[str, Any]:
     """
     Sliding-window staged extraction:
@@ -272,13 +273,21 @@ def parse_datasheet_staged(
     3) Run vision fallback on graph pages in the same window for still-missing features
     4) Slide to next window and repeat only for features still not found
     5) Stop when all features are resolved or entire PDF is exhausted
+    
+    Optional progress_callback(event_dict) is called at key milestones for SSE streaming.
     """
+    def _progress(event_type, **kwargs):
+        if progress_callback:
+            progress_callback({"event": event_type, **kwargs})
+
     print(f"\n{'='*70}")
     print(f"🚀 STAGED EXTRACTION PIPELINE for {component_name}")
     print(f"   Component Type: {component_type}")
     print(f"   Total Features to Extract: {len(required_features)}")
     print(f"   Window Size: {chunk_size} pages")
     print(f"{'='*70}")
+    
+    _progress("start", component=component_name, component_type=component_type, total_features=len(required_features))
     
     extracted_specs = {f: "Not Found" for f in required_features}
 
@@ -299,6 +308,8 @@ def parse_datasheet_staged(
         
         actual_end = min(end, total_pages)
         print(f"   PDF has {total_pages} total pages. This window covers pages {start + 1}-{actual_end}.")
+        
+        _progress("window", window=window_num, start_page=start + 1, end_page=actual_end, total_pages=total_pages)
 
         if not chunk_pages:
             print("   ⚠️ No readable pages found in this window. Ending.")
@@ -330,6 +341,9 @@ def parse_datasheet_staged(
         if found_this_window:
             for f in found_this_window:
                 print(f"      ✅ {f} = {extracted_specs[f]}")
+
+        resolved_so_far = len([k for k, v in extracted_specs.items() if str(v).strip().lower() != "not found"])
+        _progress("text_pass", window=window_num, found=len(found_this_window), found_names=found_this_window, resolved=resolved_so_far, total_features=len(required_features))
 
         missing = get_missing_features(extracted_specs)
         if missing:
@@ -363,6 +377,8 @@ def parse_datasheet_staged(
         still_missing = get_missing_features(extracted_specs)
         print(f"\n   📈 PROGRESS: {resolved_so_far}/{len(required_features)} features resolved")
         
+        _progress("progress", resolved=resolved_so_far, total_features=len(required_features), missing=len(still_missing))
+        
         if not still_missing:
             print(f"   🎉 All features found! Stopping.")
             break
@@ -382,6 +398,8 @@ def parse_datasheet_staged(
     if not_found:
         print(f"❌ Not found: {not_found}")
     print(f"{'='*70}")
+    
+    _progress("complete", resolved=resolved, total_features=len(required_features))
     return extracted_specs
 
 

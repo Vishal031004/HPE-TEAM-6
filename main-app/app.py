@@ -1,8 +1,9 @@
 import os
 import requests
+import httpx
 import json
 from fastapi import FastAPI, UploadFile, File, Query, BackgroundTasks, Form
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List
 from dotenv import load_dotenv
@@ -664,6 +665,17 @@ async def find_alternatives(request: FindAlternativesRequest):
         print(f"🧠 CACHE HIT! Loading previously extracted specs for {target_filename}")
         detected_type = cached_record.get("detected_type", "Unknown")
         user_extracted_specs = cached_record.get("specs")
+        
+        async def event_generator():
+            yield f"data: " + json.dumps({
+                "type": "interactive_ranking",
+                "detected_type": detected_type,
+                "extracted_specs": user_extracted_specs,
+                "answer": f"I extracted the specs for **{target_filename}**. Adjust your parametric weights below, and click 'Run Math Engine' to fetch live market alternatives."
+            }) + "\n\n"
+            
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+        
     else:
         print(f"⚠️ CACHE MISS! Running heavy LLM extraction for {target_filename}...")
         
@@ -673,20 +685,49 @@ async def find_alternatives(request: FindAlternativesRequest):
             
         target_specs, market_competitors = get_or_build_component_data(detected_type)
         
-        user_extracted_specs = parse_datasheet_staged(
-            filepath=file_path, component_type=detected_type, required_features=target_specs,
-            market_competitors=market_competitors, component_name=target_filename, chunk_size=15
-        )
-        
-        # Save to database so we never have to extract this specific PDF again
-        save_pdf_extraction(pdf_sha, target_filename, detected_type, user_extracted_specs)
+        async def event_generator():
+            try:
+                async with httpx.AsyncClient() as client:
+                    async with client.stream(
+                        "POST",
+                        f"{EXTRACTOR_SERVER_URL}/api/extractor/parse_staged_stream",
+                        json={
+                            "filepath": file_path,
+                            "component_type": detected_type,
+                            "required_features": target_specs,
+                            "market_competitors": market_competitors,
+                            "component_name": target_filename,
+                            "chunk_size": 15
+                        },
+                        timeout=None
+                    ) as r:
+                        r.raise_for_status()
+                        async for line in r.aiter_lines():
+                            if line:
+                                if line.startswith("data: "):
+                                    data_str = line[6:]
+                                    try:
+                                        event = json.loads(data_str)
+                                        if event.get("event") == "final_result":
+                                            specs = event.get("specs")
+                                            save_pdf_extraction(pdf_sha, target_filename, detected_type, specs)
+                                            final_msg = {
+                                                "type": "interactive_ranking",
+                                                "detected_type": detected_type,
+                                                "extracted_specs": specs,
+                                                "answer": f"I extracted the specs for **{target_filename}**. Adjust your parametric weights below, and click 'Run Math Engine' to fetch live market alternatives."
+                                            }
+                                            yield f"data: {json.dumps(final_msg)}\n\n"
+                                        else:
+                                            yield f"{line}\n\n"
+                                    except:
+                                        yield f"{line}\n\n"
+                            else:
+                                yield f"{line}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-    return {
-        "type": "interactive_ranking",
-        "detected_type": detected_type,
-        "extracted_specs": user_extracted_specs,
-        "answer": f"I extracted the specs for **{target_filename}**. Adjust your parametric weights below, and click 'Run Math Engine' to fetch live market alternatives."
-    }
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.post("/api/sessions/{session_id}/detach_pdf")
 async def detach_pdf_endpoint(session_id: str, request: DetachPdfRequest):
