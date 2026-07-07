@@ -2275,7 +2275,9 @@
       doc.setTextColor(100);
       let finalWeights = null;
       let finalComponentType = state?.detectedType || 'N/A';
+      let correctFilename = null;
       
+      // 1. Find weights and component type
       if (state && state.currentWeightValues) {
         finalWeights = state.currentWeightValues;
       } else {
@@ -2295,7 +2297,26 @@
         }
       }
 
-      const uploadedPdf = latestFilename || 'N/A';
+      // 2. Find the specific filename that triggered this engineId
+      for (let i = 0; i < chatHistory.length; i++) {
+        const msg = chatHistory[i];
+        if (msg.role === 'assistant' && msg.content.includes(engineId)) {
+          // Look backwards to find the last user message
+          for (let j = i - 1; j >= 0; j--) {
+            if (chatHistory[j].role === 'user') {
+              const userContent = chatHistory[j].content;
+              const match = userContent.match(/Find alternatives for (.*)/i);
+              if (match) {
+                correctFilename = match[1].trim();
+                break;
+              }
+            }
+          }
+          if (correctFilename) break; // found it
+        }
+      }
+
+      const uploadedPdf = correctFilename || latestFilename || 'N/A';
       const componentType = finalComponentType;
       doc.text(`Uploaded PDF: ${uploadedPdf}`, 14, 26);
       doc.text(`Component Type: ${componentType}`, 14, 31);
