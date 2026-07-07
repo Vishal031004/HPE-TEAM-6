@@ -1052,7 +1052,7 @@ async def chat_stream(request: ChatRequest):
             
     raw_chunks = retrieve_rag_context(reformulated, request.filename, pdf_sha256=target_hashes, top_k=15)
     
-    ranked_chunks = rerank_chunks_cross_encoder(reformulated, raw_chunks, top_k=5)
+    ranked_chunks = rerank_chunks_cross_encoder(reformulated, raw_chunks, top_k=10)
     
     # Build Workspace Metadata Context
     workspace_metadata_text = ""
