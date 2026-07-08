@@ -1764,6 +1764,41 @@
       // Allow sending if there is text OR an active quote OR staged files waiting to be sent
       if (!text && !activeQuote && !hasStagedFiles) return;
 
+      // INTERCEPT LOGIC: If replying "yes" to the Alt Finder prompt, use the interactive pipeline natively!
+      if (text && chatHistory.length > 0) {
+        const _AFFIRMATIONS = ["yes", "yeah", "yep", "sure", "ok", "okay", "go ahead", "proceed", "run it", "do it", "confirm", "y", "absolutely", "please", "yup", "ha", "haa", "haan", "ya", "yes please", "sure thing"];
+        const cleanedText = text.toLowerCase().replace(/[!.]/g, '').trim();
+        const isAffirm = _AFFIRMATIONS.includes(cleanedText) || _AFFIRMATIONS.some(a => cleanedText.startsWith(a + " "));
+
+        if (isAffirm) {
+          let lastAssistantMsg = null;
+          for (let i = chatHistory.length - 1; i >= 0; i--) {
+            if (chatHistory[i].role === 'assistant') {
+              lastAssistantMsg = chatHistory[i];
+              break;
+            }
+          }
+
+          if (lastAssistantMsg && lastAssistantMsg.content.includes("Alternative Market Finder") && lastAssistantMsg.content.toLowerCase().includes("yes")) {
+            const match = lastAssistantMsg.content.match(/\*\*Alternative Market Finder\*\* for \*\*(.*?)\*\*/);
+            if (match) {
+              let filename = match[1].trim();
+              if (!filename.toLowerCase().endsWith(".pdf")) filename += ".pdf";
+
+              input.value = "";
+              clearQuote();
+
+              appendUserMessage(text);
+              chatHistory.push({ "role": "user", "content": text });
+
+              // Proceed with the beautiful native UI
+              await triggerFindAlternativesForFile(filename);
+              return;
+            }
+          }
+        }
+      }
+
       let fullMessage = text;
       let displayMessage = text;
 
