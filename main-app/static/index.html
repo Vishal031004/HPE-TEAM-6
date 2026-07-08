@@ -2173,10 +2173,8 @@
       }
 
       // Explicitly send 0 for inactive features so backend doesn't default them to 10!
-      for (const f of Object.keys(state.currentWeightValues)) {
-        if (!state.activeFeatures.includes(f)) {
-          weights[f] = 0;
-        }
+      for (const f of state.inactiveFeatures) {
+        weights[f] = 0;
       }
 
       const loadingId = "loading-math-" + Date.now();
