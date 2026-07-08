@@ -851,7 +851,7 @@ async def find_alternatives(request: FindAlternativesRequest):
         
         detected_type = detect_component_type(file_path)
         if detected_type == "Unknown":
-            return {"error": "Could not detect the specific component category needed to query the market."}
+            return {"error": "Could not extract readable text from this PDF to detect the component category. The file might be an image-only scan."}
             
         target_specs, market_competitors = get_or_build_component_data(detected_type)
         

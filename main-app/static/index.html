@@ -1991,7 +1991,7 @@
 
     if (!window.mathEngineStates) window.mathEngineStates = {};
 
-    function promptForWeightsInChat(introText, specs, dType) {
+    function promptForWeightsInChat(introText, specs, dType, filename = 'Uploaded_PDF') {
       const engineId = 'engine-' + Date.now() + Math.floor(Math.random() * 1000);
       let validFeatures = [];
       for (const [feature, rawValue] of Object.entries(specs)) {
@@ -2006,16 +2006,41 @@
         inactiveFeatures: validFeatures.slice(numToSelect),
         currentWeightValues: {},
         extractedSpecs: specs,
-        detectedType: dType
+        detectedType: dType,
+        filename: filename
       };
 
       let html = `<p>${introText}</p>`;
       html += `<p style="margin-top:12px;">Component Class: <strong style="color:var(--accent)">${dType}</strong></p>`;
       html += `<div id="weight-panel-container-${engineId}"></div>`;
-      html += `<button class="btn" style="margin-top:20px;" onclick="submitWeights(this, '${engineId}')">▶ RUN MARKET MATH ENGINE</button>`;
+      html += `<div style="display:flex; gap:10px; margin-top:20px; align-items:center;" id="btn-group-${engineId}">`;
+      html += `  <button class="btn" onclick="submitWeights(this, '${engineId}')">▶ RUN MARKET MATH ENGINE</button>`;
+      html += `  <button class="btn" style="padding:4px 8px; font-size:11px;" onclick="exportSpecsToJSON('${engineId}')" title="Export extracted specs as JSON">⬇️ Export JSON</button>`;
+      html += `</div>`;
 
       appendSystemMessage(html);
       renderWeightPanel(engineId);
+    }
+
+    function exportSpecsToJSON(engineId) {
+      const state = window.mathEngineStates[engineId];
+      if (!state) return;
+      
+      const exportData = {
+        source_file: state.filename,
+        component_class: state.detectedType,
+        extracted_features: state.extractedSpecs
+      };
+      
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      let baseName = state.filename || 'Extracted_Specs';
+      if (baseName.toLowerCase().endsWith('.pdf')) baseName = baseName.slice(0, -4);
+      downloadAnchorNode.setAttribute("download", `${baseName}_Specs.json`);
+      document.body.appendChild(downloadAnchorNode); // required for firefox
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
     }
 
     function saveCurrentWeights(engineId) {
@@ -2244,7 +2269,12 @@
         document.getElementById(loadingId).remove();
         appendRawHTML(`<span style="color:var(--danger)">Math Engine failed.</span>`);
       }
-      btn.style.display = 'none'; // Hide button after successful run
+      const btnGroup = document.getElementById(`btn-group-${engineId}`);
+      if (btnGroup) {
+        btnGroup.style.display = 'none';
+      } else {
+        btn.style.display = 'none'; // Fallback
+      }
     }
 
     function injectPricing(results, containerId, pricing) {
@@ -2553,6 +2583,18 @@
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ filename: filename, session_id: currentSessionId, user_id: currentUser })
         });
+        
+        const contentType = res.headers.get("content-type");
+        if (contentType && !contentType.includes("text/event-stream")) {
+            const data = await res.json();
+            document.getElementById(loadingId)?.remove();
+            if (data.error) {
+                appendSystemMessage(`<span style="color:var(--danger)">Error: ${data.error}</span>`);
+            } else {
+                appendSystemMessage(`<span style="color:var(--danger)">Unexpected response from server.</span>`);
+            }
+            return;
+        }
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder("utf-8");
@@ -2583,7 +2625,7 @@
 
                     if (data.type === "interactive_ranking") {
                       document.getElementById(loadingId)?.remove();
-                      promptForWeightsInChat(data.answer, data.extracted_specs, data.detected_type);
+                      promptForWeightsInChat(data.answer, data.extracted_specs, data.detected_type, filename);
 
                       const userMsg = { "role": "user", "content": `Find alternatives for ${filename}` };
                       const assistantMsg = { "role": "assistant", "content": JSON.stringify(data) };
