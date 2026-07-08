@@ -327,9 +327,10 @@ def reformulate_query(query, chat_history, active_file=None):
             f"{EXTRACTOR_SERVER_URL}/api/extractor/reformulate",
             json={
                 "query": query,
-                "chat_history": chat_history,
+                "chat_history": _sanitize_chat_history(chat_history),
                 "active_file": active_file
-            }
+            },
+            timeout=15
         )
         res.raise_for_status()
         return res.json().get("query", query)
@@ -337,14 +338,76 @@ def reformulate_query(query, chat_history, active_file=None):
         print(f"Error calling extractor service reformulate: {e}")
         return query
 
+def _sanitize_chat_history(chat_history: list, max_msg_chars: int = 800) -> list:
+    """
+    Cleans chat history before sending to LLM services:
+    - Replaces huge interactive_ranking blobs with a short summary.
+    - Converts math engine results JSON into human-readable text so the LLM
+      can answer follow-up questions about prices, stock, DigiKey links etc.
+    - Truncates other oversized messages.
+    """
+    if not chat_history:
+        return []
+    import json as _json
+    cleaned = []
+    for msg in chat_history:
+        content = msg.get("content") or ""
+        role = msg.get("role", "user")
+
+        # Replace interactive_ranking JSON blob (huge raw spec dump) with a short summary
+        if "interactive_ranking" in content and "extracted_specs" in content:
+            try:
+                data = _json.loads(content)
+                dtype = data.get("detected_type", "component")
+                answer = data.get("answer", "")
+                summary = f"[Alternatives analysis was run for a {dtype}. {answer[:120]}]"
+            except Exception:
+                summary = "[Alternatives analysis was run for a component in this workspace.]"
+            cleaned.append({"role": role, "content": summary})
+            continue
+
+        # Convert math engine results JSON into clean readable text the LLM can use
+        # to answer questions about prices, stock, DigiKey/datasheet links.
+        if content.strip().startswith("{") and "\"results\"" in content and "\"part_number\"" in content:
+            try:
+                data = _json.loads(content)
+                results = data.get("results", [])
+                if results:
+                    lines = ["[Market Alternatives Results:]"]
+                    for i, r in enumerate(results, 1):
+                        pn = r.get("part_number", "N/A")
+                        score = r.get("total_score", r.get("score", "N/A"))
+                        price = r.get("price", "N/A")
+                        stock = r.get("stock", "N/A")
+                        dk_url = r.get("digikey_url", "N/A")
+                        ds_url = r.get("datasheet_url", "N/A")
+                        mfr = r.get("manufacturer", "")
+                        lines.append(
+                            f"  Rank {i}: {pn}{' (' + mfr + ')' if mfr else ''} | "
+                            f"Score: {score} | Price: {price} | Stock: {stock} | "
+                            f"DigiKey: {dk_url} | Datasheet: {ds_url}"
+                        )
+                    cleaned.append({"role": role, "content": "\n".join(lines)})
+                    continue
+            except Exception:
+                pass  # Fall through to normal truncation below
+
+        # Truncate any other oversized message
+        if len(content) > max_msg_chars:
+            content = content[:max_msg_chars] + "...[truncated]"
+
+        cleaned.append({"role": role, "content": content})
+    return cleaned
+
 def route_user_intent(query, chat_history):
     try:
         res = requests.post(
             f"{EXTRACTOR_SERVER_URL}/api/extractor/route_intent",
             json={
                 "query": query,
-                "chat_history": chat_history
-            }
+                "chat_history": _sanitize_chat_history(chat_history)
+            },
+            timeout=15
         )
         res.raise_for_status()
         return res.json().get("intent", "information_retrieval")
@@ -1127,13 +1190,18 @@ async def chat_stream(request: ChatRequest):
         f"Source documents with matching text chunks: {doc_list}\n\n"
         f"{workspace_metadata_text}"
         "CRITICAL RULES:\n"
-        "1. MULTI-DOCUMENT AWARENESS: Synthesize data from the provided context or the chat history.\n"
+        "1. MULTI-DOCUMENT AWARENESS: Synthesize data from the provided context or the chat history. "
+        "If multiple datasheets are in the workspace and the user asks a general question (e.g. 'what is the operating temp', 'compare the packages') "
+        "WITHOUT specifying a particular component, you MUST answer for EACH component separately. "
+        "Use a heading like '### ComponentName' for each one. Never pick just one and ignore the others.\n"
         "2. ZERO HALLUCINATION: If data is missing from context or history, say so. If a user asks for stock/price and it's not in the context, clearly state you don't have real-time access.\n"
         "3. FORMATTING: Use Markdown. Use bullet points and bold text for readability.\n"
-        "4. SOURCE CITATION: If your answer relies heavily on the RETRIEVED TEXT CONTEXT below, at the very end of your response (after a blank line), add a single subtle line formatted exactly like this:\n"
+        "4. SOURCE CITATION: If your answer relies on the RETRIEVED TEXT CONTEXT below (even partially), at the very end of your response (after a blank line), add a single subtle line formatted exactly like this:\n"
         "*(retrieved from [filename],  pg. [X], [Y])*\n"
         "Rules: all lowercase, inside parentheses, italic (wrap in *), no bold, no separator line, no emoji. List only unique page numbers. If multiple files, comma-separate them. Keep it minimal and unobtrusive.\n"
-        "CRITICAL EXCEPTION TO RULE 4: If your answer relies strictly on information provided in the chat history (e.g., market alternatives, user statements), DO NOT add any citation.\n\n"
+        "CRITICAL EXCEPTION TO RULE 4: ONLY skip the citation if the user is asking about a MARKET ALTERNATIVE component "
+        "(i.e., a component that was suggested as an alternative and does NOT have an uploaded datasheet in the workspace). "
+        "If the user is asking about their own uploaded component — even if its specs appeared earlier in the chat — you MUST still cite the source PDF.\n\n"
         f"--- START RETRIEVED TEXT CONTEXT ---\n{context_text}\n--- END RETRIEVED TEXT CONTEXT ---"
     )
     
