@@ -1134,7 +1134,8 @@
         grid-template-columns: 1fr;
       }
 
-      .spec-name, .spec-val {
+      .spec-name,
+      .spec-val {
         font-size: 11px;
       }
     }
@@ -1309,7 +1310,7 @@
 
     function logout() { localStorage.removeItem("userId"); sessionStorage.removeItem('loggedIn'); currentUser = null; currentSessionId = null; showAuth(); }
 
-    
+
     function updateUserProfile() {
       const username = localStorage.getItem("username") || "User";
       document.getElementById("username-display").innerText = username;
@@ -1774,7 +1775,19 @@
         stagingArea.querySelectorAll('.file-card.success .file-name').forEach(el => {
           const fileName = el.innerText;
           uploadedNames.push(fileName);
-          appendPdfPill(fileName, topContainer);
+          const isDuplicate = Array.from(topContainer.children).some(child => child.innerText.includes(fileName));
+          if (!isDuplicate) {
+            topContainer.innerHTML += `
+              <span class="pdf-pill-group" style="display:inline-flex; align-items:center; gap:2px; margin-right:4px;">
+                <a href="/api/datasheets/${encodeURIComponent(fileName)}" target="_blank" class="pdf-pill" title="Click to view PDF" style="margin-right:0; border-radius:4px 0 0 4px;">📄 ${fileName}</a>
+                <button onclick="triggerFindAlternativesForFile('${fileName.replace(/'/g, "\\'")}')" 
+                  style="background:var(--surface2); border:1px solid var(--border); border-left:none; color:var(--accent); cursor:pointer; padding:4px 6px; font-size:12px; border-radius:0;" 
+                  title="Find alternatives for ${fileName}">🔍</button>
+                <button onclick="detachPdfFromWorkspace('', '${fileName.replace(/'/g, "\\'")}')" 
+                  style="background:var(--surface2); border:1px solid var(--border); border-left:none; color:var(--danger); cursor:pointer; padding:4px 6px; font-size:12px; border-radius:0 4px 4px 0;" 
+                  title="Remove ${fileName} from workspace">✕</button>
+              </span>`;
+          }
         });
 
         stagingArea.innerHTML = "";
@@ -1788,17 +1801,19 @@
           latestFilename = uploadedNames[0];
           msgHtml = `<span style="color:var(--accent)">📄 <b>${uploadedNames[0]}</b> has been successfully attached to the workspace!</span><br><br>You can now ask questions about this datasheet below, or click its 🔍 button at the top to find alternatives.`;
         }
-        appendSystemMessage(msgHtml);
 
-        chatHistory.push({ "role": "assistant", "content": msgHtml });
-        fetch("/api/sessions/save_messages", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_id: currentSessionId, new_messages: [
-              { "role": "assistant", "content": msgHtml }
-            ]
-          })
-        });
+        if (msgHtml) {
+          appendSystemMessage(msgHtml);
+          chatHistory.push({ "role": "assistant", "content": msgHtml });
+          fetch("/api/sessions/save_messages", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session_id: currentSessionId, new_messages: [
+                { "role": "assistant", "content": msgHtml }
+              ]
+            })
+          });
+        }
 
         return;
       }
@@ -1905,8 +1920,14 @@
           if (data.error) { appendSystemMessage(`<span style="color:var(--danger)">Error: ${data.error}</span>`); return; }
 
           chatHistory.push({ "role": "user", "content": text || displayMessage });
-          appendSystemMessage(data.answer);
-          chatHistory.push({ "role": "assistant", "content": data.answer });
+
+          if (data.type === "interactive_ranking") {
+            promptForWeightsInChat(data.answer, data.extracted_specs, data.detected_type);
+            chatHistory.push({ "role": "assistant", "content": JSON.stringify(data) });
+          } else {
+            appendSystemMessage(data.answer);
+            chatHistory.push({ "role": "assistant", "content": data.answer });
+          }
         }
 
         // Save memory to backend
@@ -2048,12 +2069,12 @@
       const allSliders = getWeightSliders(engineId);
       let otherTotal = 0;
       allSliders.forEach(s => { if (s !== slider) otherTotal += parseInt(s.value || '0', 10); });
-      
+
       const maxAllowed = Math.max(0, TOTAL_WEIGHT_BUDGET - otherTotal);
       let v = parseInt(slider.value || '0', 10);
       if (v > maxAllowed) {
-         v = maxAllowed;
-         slider.value = String(v);
+        v = maxAllowed;
+        slider.value = String(v);
       }
       refreshWeightBudgetUI(engineId);
     }
@@ -2062,39 +2083,39 @@
       btn.disabled = true; btn.innerText = "Processing...";
       let weights = {};
       const state = window.mathEngineStates[engineId];
-      
+
       // Send active features with their selected weights
       let totalWeight = 0;
       for (const feature of state.activeFeatures) {
         const el = document.getElementById(`w-${engineId}-${feature.replace(/\W+/g, '')}`);
         if (el) {
-           const val = parseInt(el.value);
-           weights[feature] = val;
-           state.currentWeightValues[feature] = val;
-           totalWeight += val;
+          const val = parseInt(el.value);
+          weights[feature] = val;
+          state.currentWeightValues[feature] = val;
+          totalWeight += val;
         }
       }
-      
+
       // If user allocated 0 weight, auto-distribute equally!
       if (totalWeight === 0 && state.activeFeatures.length > 0) {
-          const eqW = Math.floor(100 / state.activeFeatures.length);
-          for (const feature of state.activeFeatures) {
-              weights[feature] = eqW;
-              state.currentWeightValues[feature] = eqW;
-              const el = document.getElementById(`w-${engineId}-${feature.replace(/\W+/g, '')}`);
-              if (el) {
-                  el.value = eqW;
-                  const pctEl = document.getElementById(`pct-${engineId}-${feature.replace(/\W+/g, '')}`);
-                  if (pctEl) pctEl.innerText = `${eqW}%`;
-              }
+        const eqW = Math.floor(100 / state.activeFeatures.length);
+        for (const feature of state.activeFeatures) {
+          weights[feature] = eqW;
+          state.currentWeightValues[feature] = eqW;
+          const el = document.getElementById(`w-${engineId}-${feature.replace(/\W+/g, '')}`);
+          if (el) {
+            el.value = eqW;
+            const pctEl = document.getElementById(`pct-${engineId}-${feature.replace(/\W+/g, '')}`);
+            if (pctEl) pctEl.innerText = `${eqW}%`;
           }
-          refreshWeightBudgetUI(engineId);
+        }
+        refreshWeightBudgetUI(engineId);
       }
-      
+
       // Explicitly send 0 for inactive features so backend doesn't default them to 10!
       for (const f of Object.keys(state.currentWeightValues)) {
         if (!state.activeFeatures.includes(f)) {
-            weights[f] = 0;
+          weights[f] = 0;
         }
       }
 
@@ -2130,14 +2151,14 @@
           const featureScores = match.feature_scores || {};
           for (const [k, v] of Object.entries(match.specs)) {
             let fscore = featureScores[k];
-            
+
             let dots = "";
             const currentW = state.currentWeightValues[k] !== undefined ? state.currentWeightValues[k] : 0;
             // If weight is explicitly 0 or feature is inactive, hide dots to prevent confusion!
             if (currentW === 0 || !state.activeFeatures.includes(k)) {
-                dots = '<span style="font-size:10px; color:var(--muted); opacity:0.6; margin-left:8px;" title="This feature had 0 weight and was ignored by the math engine.">Ignored</span>';
+              dots = '<span style="font-size:10px; color:var(--muted); opacity:0.6; margin-left:8px;" title="This feature had 0 weight and was ignored by the math engine.">Ignored</span>';
             } else {
-                dots = renderContribDots(fscore);
+              dots = renderContribDots(fscore);
             }
 
             specHTML += `<div class="spec-item"><span class="spec-item-text"><span style="color:var(--muted)">${k}:</span> ${unpackValue(v)}</span>${dots}</div>`;
@@ -2304,7 +2325,7 @@
       let finalWeights = null;
       let finalComponentType = state?.detectedType || 'N/A';
       let correctFilename = null;
-      
+
       // 1. Find weights and component type
       if (state && state.currentWeightValues) {
         finalWeights = state.currentWeightValues;
@@ -2314,13 +2335,13 @@
             try {
               const data = JSON.parse(msg.content);
               if (data.type === 'interactive_ranking' && data.detected_type) {
-                 finalComponentType = data.detected_type;
+                finalComponentType = data.detected_type;
               }
               if (data.type === 'math_engine_results' && data.engine_id === engineId) {
                 finalWeights = data.weights;
                 break;
               }
-            } catch(e){}
+            } catch (e) { }
           }
         }
       }
@@ -2393,7 +2414,7 @@
 
       let baseName = uploadedPdf !== 'N/A' ? uploadedPdf : 'SpecFlow-Comparison';
       if (baseName.toLowerCase().endsWith('.pdf')) {
-          baseName = baseName.slice(0, -4);
+        baseName = baseName.slice(0, -4);
       }
       doc.save(`${baseName}_Alternatives.pdf`);
     }
@@ -2474,7 +2495,7 @@
       appendUserMessage(`Find alternatives for ${filename}`);
 
       const loadingId = "loading-alt-" + Date.now();
-      
+
       const initialProgressHTML = `
         <div class="msg-row system" id="${loadingId}">
           <div class="bubble" style="width: 100%; max-width: 400px; font-family: var(--mono); font-size: 12px;">
@@ -2488,7 +2509,7 @@
             </div>
           </div>
         </div>`;
-      
+
       document.getElementById('chat-container').innerHTML += initialProgressHTML;
       document.getElementById('chat-container').scrollTo({ top: document.getElementById('chat-container').scrollHeight });
 
@@ -2511,20 +2532,20 @@
             buffer += decoder.decode(value, { stream: true });
             let events = buffer.split('\n\n');
             buffer = events.pop(); // keep the last incomplete chunk
-            
+
             for (const event of events) {
               const lines = event.split('\n');
               for (const line of lines) {
                 if (line.startsWith('data: ')) {
                   try {
                     const data = JSON.parse(line.substring(6));
-                    
+
                     if (data.error) {
                       appendSystemMessage(`<span style="color:var(--danger)">Error: ${data.error}</span>`);
                       document.getElementById(loadingId)?.remove();
                       return;
                     }
-                    
+
                     if (data.type === "interactive_ranking") {
                       document.getElementById(loadingId)?.remove();
                       promptForWeightsInChat(data.answer, data.extracted_specs, data.detected_type);
@@ -2542,33 +2563,33 @@
                       const statusEl = document.getElementById(`progress-status-${loadingId}`);
                       const barEl = document.getElementById(`progress-bar-${loadingId}`);
                       const featuresEl = document.getElementById(`progress-features-${loadingId}`);
-                      
+
                       if (!statusEl) continue; // If removed early
-                      
+
                       if (data.event === "start") {
-                         statusEl.innerText = `Analyzing ${data.component_type}... (0/${data.total_features} features)`;
-                         barEl.style.width = '5%';
+                        statusEl.innerText = `Analyzing ${data.component_type}... (0/${data.total_features} features)`;
+                        barEl.style.width = '5%';
                       } else if (data.event === "window") {
-                         statusEl.innerText = `Scanning pages ${data.start_page}-${data.end_page} of ${data.total_pages}...`;
-                         const pct = Math.min(95, 5 + (data.end_page / data.total_pages) * 40);
-                         barEl.style.width = pct + '%';
+                        statusEl.innerText = `Scanning pages ${data.start_page}-${data.end_page} of ${data.total_pages}...`;
+                        const pct = Math.min(95, 5 + (data.end_page / data.total_pages) * 40);
+                        barEl.style.width = pct + '%';
                       } else if (data.event === "text_pass") {
-                         if (data.found_names && data.found_names.length > 0) {
-                           data.found_names.forEach(f => {
-                             foundFeaturesHTML += `<div style="display:inline-block; padding: 2px 6px; background: rgba(0,229,176,0.1); border-radius: 4px; margin: 2px; color: var(--accent);">✅ ${f}</div>`;
-                           });
-                           featuresEl.innerHTML = foundFeaturesHTML;
-                         }
-                         statusEl.innerText = `Extracted ${data.resolved}/${data.total_features} features...`;
-                         const pct = Math.min(95, 45 + (data.resolved / data.total_features) * 50);
-                         barEl.style.width = pct + '%';
+                        if (data.found_names && data.found_names.length > 0) {
+                          data.found_names.forEach(f => {
+                            foundFeaturesHTML += `<div style="display:inline-block; padding: 2px 6px; background: rgba(0,229,176,0.1); border-radius: 4px; margin: 2px; color: var(--accent);">✅ ${f}</div>`;
+                          });
+                          featuresEl.innerHTML = foundFeaturesHTML;
+                        }
+                        statusEl.innerText = `Extracted ${data.resolved}/${data.total_features} features...`;
+                        const pct = Math.min(95, 45 + (data.resolved / data.total_features) * 50);
+                        barEl.style.width = pct + '%';
                       } else if (data.event === "progress") {
-                         statusEl.innerText = `Extracted ${data.resolved}/${data.total_features} features...`;
-                         const pct = Math.min(95, 45 + (data.resolved / data.total_features) * 50);
-                         barEl.style.width = pct + '%';
+                        statusEl.innerText = `Extracted ${data.resolved}/${data.total_features} features...`;
+                        const pct = Math.min(95, 45 + (data.resolved / data.total_features) * 50);
+                        barEl.style.width = pct + '%';
                       } else if (data.event === "complete") {
-                         statusEl.innerText = `Complete! (${data.resolved}/${data.total_features} features)`;
-                         barEl.style.width = '100%';
+                        statusEl.innerText = `Complete! (${data.resolved}/${data.total_features} features)`;
+                        barEl.style.width = '100%';
                       }
                     }
                   } catch (e) {

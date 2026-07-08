@@ -368,6 +368,7 @@ def answer_rag_question(query, retrieved_chunks, chat_history=None, is_global=Fa
     except Exception as e:
         print(f"Error calling extractor service answer_rag: {e}")
         return "I encountered an error trying to communicate with the generation service."
+
 # ========================================================================
 # CONVERSATIONAL ALTERNATIVES CONFIRMATION HELPERS
 # ========================================================================
@@ -988,7 +989,7 @@ async def chat_stream(request: ChatRequest):
                             fname = cached.get("filename") if cached else None
                         if fname:
                             available_files.append(fname)
-                            
+
             def stream_ambiguous():
                 if available_files:
                     msg = "I can see you'd like to find market alternatives, but I am not sure which component you are referring to. Please specify one of the following:\n\n"
@@ -996,7 +997,7 @@ async def chat_stream(request: ChatRequest):
                         msg += f"- **{f}**\n"
                 else:
                     msg = "I can see you'd like to find market alternatives, but there are no datasheets in your workspace. Please upload one first."
-                
+
                 yield f"data: {json.dumps(msg)}\n\n"
                 yield "data: [DONE]\n\n"
             return StreamingResponse(stream_ambiguous(), media_type="text/event-stream")
@@ -1057,7 +1058,7 @@ async def chat_stream(request: ChatRequest):
             yield f"data: {json.dumps(confirmation_msg)}\n\n"
             yield "data: [DONE]\n\n"
         return StreamingResponse(stream_confirmation(), media_type="text/event-stream")
-    
+
     # Build the RAG context, then stream the LLM response
     reformulated = reformulate_query(request.question, request.chat_history, request.active_file)
     
