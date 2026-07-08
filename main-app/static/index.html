@@ -2063,13 +2063,38 @@
       let weights = {};
       const state = window.mathEngineStates[engineId];
       
-      // Send only active features so inactive ones use the backend default (10)
+      // Send active features with their selected weights
+      let totalWeight = 0;
       for (const feature of state.activeFeatures) {
         const el = document.getElementById(`w-${engineId}-${feature.replace(/\W+/g, '')}`);
         if (el) {
            const val = parseInt(el.value);
            weights[feature] = val;
            state.currentWeightValues[feature] = val;
+           totalWeight += val;
+        }
+      }
+      
+      // If user allocated 0 weight, auto-distribute equally!
+      if (totalWeight === 0 && state.activeFeatures.length > 0) {
+          const eqW = Math.floor(100 / state.activeFeatures.length);
+          for (const feature of state.activeFeatures) {
+              weights[feature] = eqW;
+              state.currentWeightValues[feature] = eqW;
+              const el = document.getElementById(`w-${engineId}-${feature.replace(/\W+/g, '')}`);
+              if (el) {
+                  el.value = eqW;
+                  const pctEl = document.getElementById(`pct-${engineId}-${feature.replace(/\W+/g, '')}`);
+                  if (pctEl) pctEl.innerText = `${eqW}%`;
+              }
+          }
+          refreshWeightBudgetUI(engineId);
+      }
+      
+      // Explicitly send 0 for inactive features so backend doesn't default them to 10!
+      for (const f of Object.keys(state.currentWeightValues)) {
+        if (!state.activeFeatures.includes(f)) {
+            weights[f] = 0;
         }
       }
 
@@ -2106,12 +2131,15 @@
           for (const [k, v] of Object.entries(match.specs)) {
             let fscore = featureScores[k];
             
-            // If feature is inactive/default, visually limit it to max 1 dot (0.2)
-            if (!state.activeFeatures.includes(k) && fscore > 0) {
-              fscore = Math.min(fscore, 0.2);
+            let dots = "";
+            const currentW = state.currentWeightValues[k] !== undefined ? state.currentWeightValues[k] : 0;
+            // If weight is explicitly 0 or feature is inactive, hide dots to prevent confusion!
+            if (currentW === 0 || !state.activeFeatures.includes(k)) {
+                dots = '<span style="font-size:10px; color:var(--muted); opacity:0.6; margin-left:8px;" title="This feature had 0 weight and was ignored by the math engine.">Ignored</span>';
+            } else {
+                dots = renderContribDots(fscore);
             }
-            
-            const dots = renderContribDots(fscore);
+
             specHTML += `<div class="spec-item"><span class="spec-item-text"><span style="color:var(--muted)">${k}:</span> ${unpackValue(v)}</span>${dots}</div>`;
           }
           resHTML += `

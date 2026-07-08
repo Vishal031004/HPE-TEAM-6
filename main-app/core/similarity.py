@@ -72,6 +72,14 @@ def calculate_feature_score(user_val_str: str, comp_val_str: str, weight: int = 
     if u_str in c_str or c_str in u_str:
         return weight 
         
+    # Semantic equivalences
+    u_clean = u_str.replace(" ", "").replace("-", "")
+    c_clean = c_str.replace(" ", "").replace("-", "")
+    
+    axis_terms = ["3axis", "x,y,z", "xyz"]
+    if any(term in u_clean for term in axis_terms) and any(term in c_clean for term in axis_terms):
+        return weight
+        
     return 0 
 
 def rank_components(user_extracted_specs: dict, digikey_competitors: list, feature_weights: dict = None) -> list:
@@ -97,16 +105,19 @@ def rank_components(user_extracted_specs: dict, digikey_competitors: list, featu
                 continue
                 
             weight = feature_weights.get(feature, 10)
-            if weight == 0:
-                continue
-            max_possible_score += weight
+            
+            if weight > 0:
+                max_possible_score += weight
             
             if feature in comp_specs:
                 comp_val = comp_specs[feature]
-                score = calculate_feature_score(user_val, comp_val, weight)
-                total_score += score
-                # Normalize to 0.0–1.0 for this specific feature
-                feature_scores[feature] = round(score / weight, 2) if weight > 0 else 0
+                # Calculate base match quality (0.0 to 1.0) using a dummy weight of 10
+                base_match_quality = calculate_feature_score(user_val, comp_val, 10) / 10.0
+                
+                if weight > 0:
+                    total_score += (base_match_quality * weight)
+                    
+                feature_scores[feature] = round(base_match_quality, 2)
             else:
                 feature_scores[feature] = 0
 
