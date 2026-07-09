@@ -14,13 +14,9 @@ MONGO_URI = os.environ.get("MONGO_URI")
 if MONGO_URI:
     MONGO_URI = MONGO_URI.strip("'\"")
 
-DIGIKEY_CLIENT_ID = os.environ.get("DIGIKEY_CLIENT_ID")
-if DIGIKEY_CLIENT_ID:
-    DIGIKEY_CLIENT_ID = DIGIKEY_CLIENT_ID.strip("'\"")
-
-DIGIKEY_CLIENT_SECRET = os.environ.get("DIGIKEY_CLIENT_SECRET")
-if DIGIKEY_CLIENT_SECRET:
-    DIGIKEY_CLIENT_SECRET = DIGIKEY_CLIENT_SECRET.strip("'\"")
+HWAPI_SERVER_URL = os.environ.get("HWAPI_SERVER_URL", "http://127.0.0.1:8087")
+if HWAPI_SERVER_URL:
+    HWAPI_SERVER_URL = HWAPI_SERVER_URL.strip("'\"")
 MONGO_DB = "datasheet_hpe" 
 
 LLM_SERVER_URL = os.environ.get("LLM_SERVER_URL", "http://127.0.0.1:8086")
@@ -227,33 +223,6 @@ def save_pdf_extraction(pdf_sha256: str, filename: str, detected_type: str, extr
         upsert=True,
     )
 
-# Cached DigiKey token (valid for 30 min, we refresh at 25 min to be safe)
-_digikey_token_cache = {"token": None, "expires_at": 0}
-
-def get_digikey_token_lazy():
-    import time as _time
-    now = _time.time()
-    if _digikey_token_cache["token"] and now < _digikey_token_cache["expires_at"]:
-        return _digikey_token_cache["token"]
-    
-    resp = requests.post(
-        "https://api.digikey.com/v1/oauth2/token",
-        data={
-            "client_id": DIGIKEY_CLIENT_ID,
-            "client_secret": DIGIKEY_CLIENT_SECRET,
-            "grant_type": "client_credentials",
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"}
-    )
-    resp.raise_for_status()
-    resp_data = resp.json()
-    token = resp_data["access_token"]
-    expires_in = int(resp_data.get("expires_in", 300))
-    _digikey_token_cache["token"] = token
-    # Cache for slightly less than the actual expiration time to be safe
-    _digikey_token_cache["expires_at"] = _time.time() + max(0, expires_in - 30)
-    return token
-
 def get_or_build_component_data(component_type):
     db = _get_db()
     if db is None: return None, None
@@ -264,30 +233,19 @@ def get_or_build_component_data(component_type):
         print(f"🧠 CACHE HIT! Loaded dynamic schema and competitors for '{component_type}'.")
         return cached_data["features"], cached_data["competitors"]
         
-    print(f"⚠️ CACHE MISS! '{component_type}' not found. Fetching from DigiKey...")
+    print(f"⚠️ CACHE MISS! '{component_type}' not found. Fetching from Hardware API Service...")
     
     try:
-        token = get_digikey_token_lazy()
         resp = requests.post(
-            "https://api.digikey.com/products/v4/search/keyword",
-            headers={
-                "X-DIGIKEY-Client-Id": DIGIKEY_CLIENT_ID,
-                "Authorization": f"Bearer {token}",
-                "X-DIGIKEY-Locale-Site": "US",
-                "X-DIGIKEY-Locale-Language": "en",
-                "X-DIGIKEY-Locale-Currency": "USD",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
+            f"{HWAPI_SERVER_URL}/api/hardware/search",
             json={
-                "Keywords": component_type, 
-                "Limit": 20, 
-                "Offset": 0,
-                "FilterOptionsRequest": {"StatusFilter": [{"Id": 0}]}
-            }
+                "keywords": component_type,
+                "limit": 20
+            },
+            timeout=15
         )
         resp.raise_for_status()
-        products = resp.json().get("Products", [])
+        products = resp.json().get("products", [])
 
         if not products: return None, None
 
@@ -295,13 +253,13 @@ def get_or_build_component_data(component_type):
         competitors = []
 
         for p in products:
-            name = str(p.get("ManufacturerProductNumber", "Unknown"))
-            params_raw = p.get("Parameters", [])
+            name = str(p.get("part_number", "Unknown"))
+            params_raw = p.get("parameters", [])
             
             param_dict = {}
             for param in params_raw:
-                k = param.get("ParameterText", "").strip()
-                v = param.get("ValueText", "").strip()
+                k = param.get("parameter_text", "").strip()
+                v = param.get("value_text", "").strip()
                 if k and v:
                     param_counter[k] += 1
                     param_dict[k] = v
@@ -318,14 +276,14 @@ def get_or_build_component_data(component_type):
                 "competitors": competitors, 
                 "sampled_products": len(products),
                 "stored_at": datetime.now(timezone.utc).isoformat(),
-                "source": "digikey_api"
+                "source": "hardware_api"
             }},
             upsert=True
         )
         return dynamic_features, competitors
 
     except Exception as e:
-        print(f"❌ DigiKey fetch failed: {e}")
+        print(f"❌ Hardware API fetch failed: {e}")
         return None, None
 
 # ========================================================================

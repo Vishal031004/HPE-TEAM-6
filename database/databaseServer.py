@@ -13,7 +13,7 @@ from database import (
     create_chat_session, get_user_sessions, attach_pdf_to_session, get_session_data,
     save_session_messages, delete_chat_session, rename_chat_session, toggle_pin_session,
     detach_pdf_from_session,
-    get_cached_pdf_extraction, save_pdf_extraction, get_digikey_token_lazy,
+    get_cached_pdf_extraction, save_pdf_extraction,
     get_or_build_component_data, has_rag_chunks, store_rag_chunks, retrieve_rag_context
 )
 
@@ -196,14 +196,6 @@ def save_extraction(request: SaveExtractionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 # DigiKey API Cache Endpoints
-
-@app.get("/api/digikey/token")
-def get_digikey_token():
-    try:
-        token = get_digikey_token_lazy()
-        return {"access_token": token}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/component_data")
 def get_component_data(request: ComponentDataRequest):

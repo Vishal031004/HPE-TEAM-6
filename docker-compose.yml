@@ -16,6 +16,22 @@ services:
       - "8086:8086"
     restart: unless-stopped
 
+  hwapi:
+    build:
+      context: ./HWAPIService
+      dockerfile: Dockerfile
+    container_name: hpe-hwapi
+    environment:
+      - DIGIKEY_CLIENT_ID=${DIGIKEY_CLIENT_ID}
+      - DIGIKEY_CLIENT_SECRET=${DIGIKEY_CLIENT_SECRET}
+    networks:
+      - hpe-network
+    expose:
+      - "8087"
+    ports:
+      - "8087:8087"
+    restart: unless-stopped
+
   database:
     build:
       context: ./database
@@ -23,9 +39,8 @@ services:
     container_name: hpe-database
     environment:
       - MONGO_URI=${MONGO_URI}
-      - DIGIKEY_CLIENT_ID=${DIGIKEY_CLIENT_ID}
-      - DIGIKEY_CLIENT_SECRET=${DIGIKEY_CLIENT_SECRET}
       - LLM_SERVER_URL=http://hpe-llm:8086
+      - HWAPI_SERVER_URL=http://hpe-hwapi:8087
     networks:
       - hpe-network
     expose:
@@ -34,6 +49,7 @@ services:
       - "8081:8081"
     depends_on:
       - llm
+      - hwapi
     restart: unless-stopped
 
   pdf_processor:
@@ -84,6 +100,7 @@ services:
       - DB_SERVER_URL=http://hpe-database:8081
       - EXTRACTOR_SERVER_URL=http://hpe-extractor:8085
       - PDF_PROCESSOR_SERVER_URL=http://hpe-pdf-processor:8084
+      - HWAPI_SERVER_URL=http://hpe-hwapi:8087
       - DATASHEETS_DIR=/app/datasheets
     volumes:
       - shared-datasheets:/app/datasheets
@@ -95,6 +112,7 @@ services:
       - database
       - extractor
       - pdf_processor
+      - hwapi
     restart: unless-stopped
 
 volumes:

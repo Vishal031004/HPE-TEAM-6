@@ -101,12 +101,13 @@ Check the running status of the containers:
 docker compose ps
 ```
 
-You should see 5 running containers:
+You should see 6 running containers:
 * `hpe-main-app` (Port 8000)
 * `hpe-extractor` (Port 8085)
 * `hpe-pdf-processor` (Port 8084)
 * `hpe-database` (Port 8081)
 * `hpe-llm` (Port 8086)
+* `hpe-hwapi` (Port 8087)
 
 **Checking Logs**
 To monitor live logs for all services:

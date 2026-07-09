@@ -12,3 +12,5 @@ __pycache__/
 # IDEs / OS files
 .vscode/
 .DS_Store
+
+ARCHITECTURE.md

@@ -1,6 +1,5 @@
 import os
 import requests
-import httpx
 import json
 from fastapi import FastAPI, UploadFile, File, Query, BackgroundTasks, Form
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
@@ -22,9 +21,9 @@ DATASHEETS_DIR = os.environ.get("DATASHEETS_DIR", "datasheets")
 if DATASHEETS_DIR:
     DATASHEETS_DIR = DATASHEETS_DIR.strip("'\"")
 
-DIGIKEY_CLIENT_ID = os.environ.get("DIGIKEY_CLIENT_ID", "")
-if DIGIKEY_CLIENT_ID:
-    DIGIKEY_CLIENT_ID = DIGIKEY_CLIENT_ID.strip("'\"")
+HWAPI_SERVER_URL = os.environ.get("HWAPI_SERVER_URL", "http://127.0.0.1:8087")
+if HWAPI_SERVER_URL:
+    HWAPI_SERVER_URL = HWAPI_SERVER_URL.strip("'\"")
 
 def detect_component_type(pdf_path: str, available_types: list = None) -> str:
     try:
@@ -76,9 +75,7 @@ DB_SERVER_URL = os.environ.get("DB_SERVER_URL", "http://127.0.0.1:8081")
 if DB_SERVER_URL:
     DB_SERVER_URL = DB_SERVER_URL.strip("'\"")
 
-DIGIKEY_CLIENT_ID = os.environ.get("DIGIKEY_CLIENT_ID")
-if DIGIKEY_CLIENT_ID:
-    DIGIKEY_CLIENT_ID = DIGIKEY_CLIENT_ID.strip("'\"")
+# DIGIKEY_CLIENT_ID is deprecated, now handled by HWAPIService
 
 def register_user(username, password):
     try:
@@ -229,14 +226,7 @@ def save_pdf_extraction(pdf_sha256: str, filename: str, detected_type: str, extr
     except Exception as e:
         print(f"Error calling database service save_pdf_extraction: {e}")
 
-def get_digikey_token_lazy():
-    try:
-        res = requests.get(f"{DB_SERVER_URL}/api/digikey/token")
-        res.raise_for_status()
-        return res.json().get("access_token")
-    except Exception as e:
-        print(f"Error calling database service get_digikey_token_lazy: {e}")
-        return None
+
 
 def get_or_build_component_data(component_type: str):
     try:
@@ -1357,68 +1347,16 @@ async def rename_session(session_id: str, request: RenameRequest):
 # ========================================================================
 
 def _fetch_digikey_pricing(part_number: str) -> dict:
-    """Fetches live stock and price for a single part number from DigiKey.
-    Returns {part_number, stock, price, currency} or error info.
-    Does NOT write to database."""
+    """Fetches live stock and price for a single part number from DigiKey via HWAPIService.
+    Returns {part_number, stock, price, currency} or error info."""
     try:
-        token = get_digikey_token_lazy()
         resp = requests.post(
-            "https://api.digikey.com/products/v4/search/keyword",
-            headers={
-                "X-DIGIKEY-Client-Id": DIGIKEY_CLIENT_ID,
-                "Authorization": f"Bearer {token}",
-                "X-DIGIKEY-Locale-Site": "US",
-                "X-DIGIKEY-Locale-Language": "en",
-                "X-DIGIKEY-Locale-Currency": "USD",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            json={"Keywords": part_number, "Limit": 1, "Offset": 0},
+            f"{HWAPI_SERVER_URL}/api/hardware/pricing",
+            json={"part_number": part_number},
             timeout=10
         )
         resp.raise_for_status()
-        products = resp.json().get("Products", [])
-
-        if not products:
-            return {"part_number": part_number, "stock": None, "price": None, "currency": "USD", "error": "Not found on DigiKey"}
-
-        product = products[0]
-        stock = product.get("QuantityAvailable", 0)
-
-        # Extract the HIGHEST unit price across all variations and price breaks
-        all_prices = []
-        variations = product.get("ProductVariations", [])
-        for var in variations:
-            pricing = var.get("StandardPricing", [])
-            for pb in pricing:
-                up = pb.get("UnitPrice")
-                if up is not None:
-                    all_prices.append(up)
-        
-        # Fallback: check top-level UnitPrice if variations didn't have it
-        if not all_prices and product.get("UnitPrice") is not None:
-            all_prices.append(product.get("UnitPrice"))
-            
-        price = max(all_prices) if all_prices else None
-
-        # Extract datasheet URL — DigiKey v4 uses 'DatasheetUrl', older versions use 'PrimaryDatasheet'
-        datasheet_url = product.get("DatasheetUrl") or product.get("PrimaryDatasheet") or ""
-        digikey_url = product.get("ProductUrl", "")
-        # DigiKey sometimes returns relative URLs
-        if digikey_url and not digikey_url.startswith("http"):
-            digikey_url = f"https://www.digikey.com{digikey_url}"
-
-        print(f"📎 [PRICING] {part_number}: price=${price}, stock={stock}, datasheet={datasheet_url[:80] if datasheet_url else 'NONE'}")
-
-        return {
-            "part_number": part_number,
-            "stock": stock,
-            "price": price,
-            "currency": "USD",
-            "datasheet_url": datasheet_url,
-            "digikey_url": digikey_url
-        }
-
+        return resp.json()
     except Exception as e:
         print(f"⚠️ Pricing fetch failed for {part_number}: {e}")
         return {"part_number": part_number, "stock": None, "price": None, "currency": "USD", "datasheet_url": "", "digikey_url": "", "error": str(e)}

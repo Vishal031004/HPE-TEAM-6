@@ -8,6 +8,13 @@ services:
     image: ${DOCKERHUB_USERNAME:-yourusername}/hpe-llm:latest
     platform: ${TARGET_PLATFORM:-linux/arm64}
 
+  hwapi:
+    build:
+      context: ./HWAPIService
+      dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yourusername}/hpe-hwapi:latest
+    platform: ${TARGET_PLATFORM:-linux/arm64}
+
   database:
     build:
       context: ./database
