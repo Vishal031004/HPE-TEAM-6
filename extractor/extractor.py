@@ -603,7 +603,8 @@ def answer_rag_question(query: str, retrieved_chunks: List[Dict], chat_history: 
             "present a structured comparison across all available documents. Use tables or bullet points to make differences clear.\n"
             "4. COMPLETENESS: If the user asks about ALL components but some documents don't have the requested data, explicitly state which documents are missing that information rather than silently omitting them.\n"
             "5. ENGINEERING REASONING: You are allowed to perform logical analysis and comparisons across documents.\n"
-            "6. ZERO HALLUCINATION: If the specific data is missing from the context, say so. Do not assume or infer values from one component's datasheet to another.\n\n"
+            "6. ZERO HALLUCINATION: If the specific data is missing from the context, say so. Do not assume or infer values from one component's datasheet to another.\n"
+            "7. OFF-TOPIC GUARDRAIL: You are strictly a hardware engineering assistant. If the user asks general coding, software programming, or random off-topic questions, you must politely refuse and state your purpose. Do NOT write code snippets.\n\n"
             f"--- START RETRIEVED CONTEXT (from {len(source_docs)} documents) ---\n{context_text}\n--- END RETRIEVED CONTEXT ---"
         )
     else:
@@ -615,7 +616,8 @@ def answer_rag_question(query: str, retrieved_chunks: List[Dict], chat_history: 
             "1. STRICT GROUNDING: Every technical specification or numerical value you provide MUST be suffixed with its exact source chunk ID tag in the format.\n"
             "2. ENGINEERING REASONING: You are explicitly allowed to perform logical analysis. If the user asks 'Is 45°C safe?', and the context states the operating range is -40°C to +125°C, you MUST answer contextually: 'Yes, 45°C is perfectly safe because it falls within the specified operating range of -40°C to +125°C.'\n"
             "3. CONVERSATIONAL MEMORY: You have access to the conversation history. If the user asks a follow-up question using pronouns (e.g., 'explain those features', 'is that voltage fine?'), use the chat history to understand what they are referring to and elaborate naturally.\n"
-            "4. ZERO HALLUCINATION: If the specific data required to answer the question or evaluate the condition is missing from both the context snippets and the chat history, you must politely decline. Reply: 'I cannot find the specifications for that in the provided datasheet.' Do not assume standard industry values.\n\n"
+            "4. ZERO HALLUCINATION: If the specific data required to answer the question or evaluate the condition is missing from both the context snippets and the chat history, you must politely decline. Reply: 'I cannot find the specifications for that in the provided datasheet.' Do not assume standard industry values.\n"
+            "5. OFF-TOPIC GUARDRAIL: You are strictly a hardware engineering assistant. If the user asks general coding, software programming, or random off-topic questions, you must politely refuse and state your purpose. Do NOT write code snippets.\n\n"
             f"--- START RETRIEVED CONTEXT ---\n{context_text}\n--- END RETRIEVED CONTEXT ---"
         )
 

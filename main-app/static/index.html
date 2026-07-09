@@ -365,6 +365,16 @@
       margin-bottom: 0;
     }
 
+    /* Add space between components in numbered lists */
+    .bubble-content ol>li {
+      margin-top: 16px;
+      margin-bottom: 16px;
+    }
+
+    .bubble-content ul>li {
+      margin-bottom: 6px;
+    }
+
     /* Input Area */
     .chat-input-wrapper {
       background: var(--surface);
@@ -1266,6 +1276,7 @@
 
     // --- INIT ---
     if (currentUser && sessionStorage.getItem('loggedIn')) {
+      updateUserProfile();
       showApp();
       const lastSessionId = sessionStorage.getItem('lastSessionId');
       const lastSessionName = sessionStorage.getItem('lastSessionName');
@@ -1308,7 +1319,20 @@
       }
     }
 
-    function logout() { localStorage.removeItem("userId"); sessionStorage.removeItem('loggedIn'); currentUser = null; currentSessionId = null; showAuth(); }
+    function logout() {
+      localStorage.removeItem("userId");
+      sessionStorage.removeItem('loggedIn');
+      sessionStorage.removeItem('lastSessionId');
+      sessionStorage.removeItem('lastSessionName');
+      currentUser = null;
+      currentSessionId = null;
+      document.getElementById('chat-container').innerHTML = "";
+      document.getElementById('attached-pdfs-container').innerHTML = "";
+      document.getElementById('current-session-title').innerText = "Select or create a workspace";
+      document.getElementById('chat-input').disabled = true;
+      document.getElementById('send-btn').disabled = true;
+      showAuth();
+    }
 
 
     function updateUserProfile() {
@@ -2010,7 +2034,9 @@
         filename: filename
       };
 
-      let html = `<p>${introText}</p>`;
+      // Parse markdown bold **text** to styled HTML
+      const formattedIntroText = introText.replace(/\*\*(.*?)\*\*/g, '<strong style="font-size: 1.15em; color: var(--text);">$1</strong>');
+      let html = `<p>${formattedIntroText}</p>`;
       html += `<p style="margin-top:12px;">Component Class: <strong style="color:var(--accent)">${dType}</strong></p>`;
       html += `<div id="weight-panel-container-${engineId}"></div>`;
       html += `<div style="display:flex; gap:10px; margin-top:20px; align-items:center;" id="btn-group-${engineId}">`;
@@ -2025,13 +2051,13 @@
     function exportSpecsToJSON(engineId) {
       const state = window.mathEngineStates[engineId];
       if (!state) return;
-      
+
       const exportData = {
         source_file: state.filename,
         component_class: state.detectedType,
         extracted_features: state.extractedSpecs
       };
-      
+
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
       const downloadAnchorNode = document.createElement('a');
       downloadAnchorNode.setAttribute("href", dataStr);
@@ -2581,17 +2607,17 @@
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ filename: filename, session_id: currentSessionId, user_id: currentUser })
         });
-        
+
         const contentType = res.headers.get("content-type");
         if (contentType && !contentType.includes("text/event-stream")) {
-            const data = await res.json();
-            document.getElementById(loadingId)?.remove();
-            if (data.error) {
-                appendSystemMessage(`<span style="color:var(--danger)">Error: ${data.error}</span>`);
-            } else {
-                appendSystemMessage(`<span style="color:var(--danger)">Unexpected response from server.</span>`);
-            }
-            return;
+          const data = await res.json();
+          document.getElementById(loadingId)?.remove();
+          if (data.error) {
+            appendSystemMessage(`<span style="color:var(--danger)">Error: ${data.error}</span>`);
+          } else {
+            appendSystemMessage(`<span style="color:var(--danger)">Unexpected response from server.</span>`);
+          }
+          return;
         }
 
         const reader = res.body.getReader();

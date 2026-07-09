@@ -534,7 +534,8 @@ def run_agentic_chat_loop(request, max_iterations=5):
         "You have access to several tools. Use them to answer the user's request. "
         "1. If they ask about technical specs, search datasheets, use `search_datasheets`.\n"
         "2. If they ask about the current workspace, uploaded files, or metadata, use `get_workspace_metadata`.\n"
-        "3. If they ask about live market pricing or stock, use `fetch_live_pricing`. If the user provides a filename (e.g. 'ADXRS453.pdf'), strip the extension and use the base part number (e.g. 'ADXRS453') for the tool.\n"
+        "3. If the user asks about prices, stock, availability, cost, or purchasing (e.g., 'price of X', 'are these in stock', 'fetch prices'), use `fetch_live_pricing`. You can look up multiple components at once! If referring to uploaded files, use `get_workspace_metadata` first to find the file names, then strip '.pdf' to get the base part numbers.\n"
+        "4. OFF-TOPIC GUARDRAIL: You are strictly a hardware engineering assistant. If the user asks general coding, software programming, or random off-topic questions, you must politely refuse and state your purpose. Do NOT write code.\n"
         "If a tool doesn't return enough info, you can call it again with different parameters or try another tool."
     )
     
@@ -580,9 +581,13 @@ def run_agentic_chat_loop(request, max_iterations=5):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "part_number": {"type": "string"}
+                        "part_numbers": {
+                            "type": "array", 
+                            "items": {"type": "string"}, 
+                            "description": "A list of part numbers to look up."
+                        }
                     },
-                    "required": ["part_number"]
+                    "required": ["part_numbers"]
                 }
             }
         }
@@ -635,9 +640,15 @@ def run_agentic_chat_loop(request, max_iterations=5):
             return "No workspace or file selected."
                 
         elif name == "fetch_live_pricing":
-            pn = args.get("part_number", "")
-            res = _fetch_digikey_pricing(pn)
-            return json.dumps(res)
+            pns = args.get("part_numbers", [])
+            if isinstance(pns, str):
+                pns = [pns]
+            results = {}
+            for pn in pns:
+                if pn.lower().endswith(".pdf"):
+                    pn = pn[:-4]
+                results[pn] = _fetch_digikey_pricing(pn)
+            return json.dumps(results)
             
         return "Unknown tool."
 
